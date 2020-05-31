@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Callflow action to branch the call to another callflow.
 %%%
 %%% <h4>Data options:</h4>
@@ -62,8 +62,7 @@ handle_id(Id, Call) ->
             cf_exe:continue(Call);
         {'ok', JObj} ->
             lager:info("branching to new callflow ~s", [Id]),
-            Flow = kzd_callflows:flow(JObj, kz_json:new()),
-            cf_exe:branch(Flow, Call)
+            cf_exe:branch(JObj, Call)
     end.
 
 %%------------------------------------------------------------------------------

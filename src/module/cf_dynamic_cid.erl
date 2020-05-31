@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Allow the user to change their Caller ID based on the action.
 %%%
 %%% <h4>Data options:</h4>
@@ -243,7 +243,7 @@ maybe_restrict_call(Data, Call, Number, Flow) ->
             _ = kapps_call_command:queued_hangup(Call),
             'ok';
         'false' ->
-            cf_exe:branch(kzd_callflows:flow(Flow), Call)
+            cf_exe:branch(Flow, Call)
     end.
 
 %%------------------------------------------------------------------------------

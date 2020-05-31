@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2021, 2600Hz
+%%% @copyright (C) 2012-2022, 2600Hz
 %%% @doc Allow caller to use the account resource to call out.
 %%%
 %%% <h4>Data options:</h4>
@@ -163,7 +163,7 @@ maybe_restrict_call(Data, Call, Number, Flow) ->
             _ = kapps_call_command:queued_hangup(Call),
             'ok';
         'false' ->
-            cf_exe:branch(kz_json:get_json_value(<<"flow">>, Flow), Call)
+            cf_exe:branch(Flow, Call)
     end.
 
 -spec should_use_account_cid(kz_json:object()) -> boolean().

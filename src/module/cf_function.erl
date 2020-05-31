@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2021, 2600Hz
+%%% @copyright (C) 2012-2022, 2600Hz
 %%% @doc Accept customized `dialplan'.
 %%%
 %%% <h4>Data options:</h4>
@@ -82,5 +82,5 @@ maybe_branch(FlowJObj, Call) ->
             cf_exe:continue(Call);
         {'ok', ValidCallflow} ->
             lager:info("branching callflow to ~p", [ValidCallflow]),
-            cf_exe:branch(kzd_callflows:flow(ValidCallflow), Call)
+            cf_exe:branch(ValidCallflow, Call)
     end.

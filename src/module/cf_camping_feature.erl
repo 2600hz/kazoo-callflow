@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2021, 2600Hz
+%%% @copyright (C) 2013-2022, 2600Hz
 %%% @doc Sends request to start the call to recipient when they available.
 %%%
 %%% <h4>Data options:</h4>
@@ -197,7 +197,7 @@ no_channels(#state{id = TargetId
     Flow = kz_json:from_list([{<<"module">>, TargetType}
                              ,{<<"data">>, kz_json:from_list([{<<"id">>, TargetId}])}
                              ]),
-    cf_exe:branch(Flow, Call),
+    cf_exe:continue_with_flow(Flow, Call),
     just('connected');
 no_channels(#state{type = <<"offnet">>
                   ,is_no_match = 'true'

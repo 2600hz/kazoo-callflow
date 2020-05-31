@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -34,7 +34,7 @@ handle(Data, Call) ->
         {'ok', Flow, 'false'} ->
             JObj = suppress_ccv(Data),
             kapps_call_command:set('undefined', JObj, Call),
-            cf_exe:branch(kzd_callflows:flow(Flow, kz_json:new()), Call);
+            cf_exe:branch(Flow, Call);
         _ ->
             cf_exe:continue(Call)
     end.

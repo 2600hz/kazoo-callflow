@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2021, 2600Hz
+%%% @copyright (C) 2012-2022, 2600Hz
 %%% @doc
 %%% This Source Code Form is subject to the terms of the Mozilla Public
 %%% License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -29,7 +29,7 @@ handle(Data, Call, AccountId, Number) ->
     case cf_flow:lookup(Number, AccountId) of
         {'ok', CallFlow, _NoMatch} ->
             UpdatedCall = update_call(Number, Data, Call),
-            cf_exe:branch(kzd_callflows:flow(CallFlow), UpdatedCall);
+            cf_exe:branch(CallFlow, UpdatedCall);
         {'error', _} ->
             cf_exe:stop(Call)
     end.

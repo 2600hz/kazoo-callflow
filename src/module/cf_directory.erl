@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Present a directory menu to the caller.
 %%%
 %%% <strong>Basic flow of a directory call:</strong>
@@ -265,10 +265,10 @@ maybe_confirm_match(Call, User, 'true') ->
         _ -> 'false'
     end.
 
--spec route_to_match(kapps_call:call(), 'fail' | kz_json:object()) -> 'ok'.
+-spec route_to_match(kapps_call:call(), 'fail' | kzd_callflows:doc()) -> 'ok'.
 route_to_match(Call, 'fail') -> cf_exe:continue(Call);
 route_to_match(Call, Callflow) ->
-    cf_exe:branch(kz_json:get_value(<<"flow">>, Callflow), Call).
+    cf_exe:branch(Callflow, Call).
 
 %%------------------------------------------------------------------------------
 %% Audio Prompts
@@ -364,9 +364,9 @@ clear_dtmf(#directory{}=State) -> State#directory{digits_collected = <<>>}.
 %%------------------------------------------------------------------------------
 %% Directory User Functions
 %%------------------------------------------------------------------------------
--spec callflow(kapps_call:call(), directory_user()) -> kz_json:object() | 'fail'.
+-spec callflow(kapps_call:call(), directory_user()) -> kzd_callflows:doc() | 'fail'.
 callflow(Call, #directory_user{callflow_id=CF}) ->
-    case kz_datamgr:open_doc(kapps_call:account_db(Call), CF) of
+    case kzd_callflows:fetch(kapps_call:account_db(Call), CF) of
         {'ok', JObj} -> JObj;
         {'error', _E} ->
             lager:info("failed to find callflow ~s: ~p", [CF, _E]),

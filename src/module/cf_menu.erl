@@ -244,12 +244,7 @@ hunt_for_callflow(Digits, Menu, Call) ->
             lager:info("callflow hunt succeeded"),
             _ = kapps_call_command:flush_dtmf(Call),
             _ = play_transferring_prompt(Menu, Call),
-            Props = [{'cf_capture_group', kz_json:get_ne_value(<<"capture_group">>, FlowDoc)}
-                    ,{'cf_capture_groups', kz_json:get_value(<<"capture_groups">>, FlowDoc, kz_json:new())}
-                    ],
-            UpdatedCall = kapps_call:kvs_store_proplist(Props, Call),
-            cf_exe:set_call(UpdatedCall),
-            execute_callflow(Menu, kzd_callflows:flow(FlowDoc), UpdatedCall),
+            execute_callflow(Menu, kzd_callflows:flow(FlowDoc), Call),
             'true';
         _ ->
             lager:info("callflow hunt failed"),

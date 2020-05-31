@@ -61,6 +61,8 @@
         ,get_endpoint_id/1
         ]).
 
+-export([update_call/2, update_call/3]).
+
 -include("callflow.hrl").
 -include_lib("kazoo_stdlib/include/kazoo_json.hrl").
 
@@ -379,7 +381,7 @@ get_endpoint_id_by_sip_username(AccountDb, Username) ->
     end.
 
 %%------------------------------------------------------------------------------
-%% @doc
+%% @doc Get the callflow doc for an operator number.
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_operator_callflow(kz_term:ne_binary()) ->
@@ -397,8 +399,7 @@ get_operator_callflow(Account, OpNum) ->
         {'ok', _, 'true'} ->
             lager:warning("unable to find operator callflow in ~s: lookup only returned no_match", [Account]),
             {'error', 'no_match'};
-        {'ok', JObj, _} ->
-            {'ok', kz_json:get_json_value(<<"flow">>, JObj, kz_json:new())};
+        {'ok', JObj, _} -> {'ok', JObj};
         {'error', _R}=E ->
             lager:warning("unable to find operator callflow in ~s: ~p", [Account, _R]),
             E
@@ -917,3 +918,34 @@ maybe_start_call_forwarded_endpoint(Call, {'ok', Endpoint}) ->
 get_endpoint_id(Call) ->
     DefaultEndpointId = kapps_call:authorizing_id(Call),
     kapps_call:kvs_fetch(?RESTRICTED_ENDPOINT_KEY, DefaultEndpointId, Call).
+
+%%------------------------------------------------------------------------------
+%% @doc Used to keep KVs on call up to date when starting new callflows, such as
+%% when using cf_callflow or dialing the operator in cf_voicemail.
+%%
+%% @param FlowDoc {@link kzd_callflows:doc()} callflow doc being started
+%% @param Call {@link kapps_call:call()} the call to update
+%% @end
+%%------------------------------------------------------------------------------
+-spec update_call(kzd_callflows:doc(), kapps_call:call()) -> kapps_call:call().
+update_call(FlowDoc, Call) ->
+    update_call(FlowDoc, cf_flow:contains_no_match(FlowDoc), Call).
+
+%%------------------------------------------------------------------------------
+%% @see update_call/2
+%%
+%% @param FlowDoc {@link kzd_callflows:doc()} callflow doc being started
+%% @param NoMatch whether the callflow is the fallback no_match callflow
+%% @param Call {@link kapps_call:call()} the call to update
+%% @end
+%%------------------------------------------------------------------------------
+-spec update_call(kzd_callflows:doc(), boolean(), kapps_call:call()) -> kapps_call:call().
+update_call(FlowDoc, NoMatch, Call) ->
+    Props = [{'cf_flow_id', kz_doc:id(FlowDoc)}
+            ,{'cf_flow_name', kzd_callflows:name(FlowDoc, kapps_call:request_user(Call))}
+            ,{'cf_flow', kzd_callflows:flow(FlowDoc)}
+            ,{'cf_capture_group', kzd_callflows:capture_group(FlowDoc)}
+            ,{'cf_capture_groups', kzd_callflows:capture_groups(FlowDoc, kz_json:new())}
+            ,{'cf_no_match', NoMatch}
+            ],
+    kapps_call:kvs_store_proplist(Props, Call).
