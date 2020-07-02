@@ -478,9 +478,6 @@ start_composing_voicemail(#mailbox{interdigit_timeout=Interdigit
                                           ,0
                                           ,Interdigit
                                           ,NoopId
-                                          ,[]
-                                          ,'true'
-                                          ,kapps_call_command:default_application_timeout()
                                           ,Call
                                           )
     of
