@@ -637,7 +637,7 @@ handle_event(JObj, #state{cf_module_pid=PidRef
                  ModPid -> [ModPid | Others]
              end,
 
-    case {kz_util:get_event_type(JObj), kz_call_event:call_id(JObj)} of
+    case {kz_api:event_type(JObj), kz_call_event:call_id(JObj)} of
         {{<<"call_event">>, <<"CHANNEL_DESTROY">>}, CallId} ->
             handle_channel_destroyed(Self, Notify, JObj);
         {{<<"call_event">>, <<"CHANNEL_DISCONNECTED">>}, CallId} ->
