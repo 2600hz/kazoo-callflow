@@ -42,7 +42,6 @@
                      ]).
 
 -define(CHILDREN, [?CACHE_ARGS(?CACHE_NAME, ?CACHE_PROPS)
-
                   ,?WORKER('cf_shared_listener')
                   ,?SUPER('cf_listener_sup')
                   ,?SUPER('cf_event_handler_sup')
