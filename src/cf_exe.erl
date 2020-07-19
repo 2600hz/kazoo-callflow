@@ -340,8 +340,7 @@ init_cf_exe(Pid, #{request := JObj
                   }) ->
     proc_lib:init_ack(Pid, {'ok', self()}),
     kz_amqp_channel:consumer_channel(props:get_value('channel', Props)),
-    CallId = kz_api:call_id(JObj),
-    _ = kz_hooks:bind_call_id(CallId),
+    _ = kz_events:bind_call_id(kz_api:call_id(JObj)),
     case Fun(JObj, Props) of
         {'ok', Call} ->
             process_flag('trap_exit', 'true'),
@@ -539,9 +538,6 @@ handle_cast(_Msg, State) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle_info(any(), state()) -> kz_types:handle_info_ret_state(state()).
-handle_info({'amqp_msg', JObj}, State) ->
-    _ = handle_event(JObj, State),
-    {'noreply', State};
 handle_info({'kapi', {_, _, JObj}}, State) ->
     _ = handle_event(JObj, State),
     {'noreply', State};
