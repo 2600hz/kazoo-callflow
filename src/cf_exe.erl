@@ -517,8 +517,8 @@ handle_cast({'callid_update', NewCallId}, #state{call=Call}=State) ->
     kz_log:put_callid(NewCallId),
     PrevCallId = kapps_call:call_id_direct(Call),
     lager:info("updating callid to ~s (from ~s), catch you on the flip side", [NewCallId, PrevCallId]),
-    _ = kz_hooks:unbind_call_id(PrevCallId),
-    _ = kz_hooks:bind_call_id(NewCallId),
+    _ = kz_events:unbind_call_id(PrevCallId),
+    _ = kz_events:bind_call_id(NewCallId),
     {'noreply', State#state{call=kapps_call:set_call_id(NewCallId, Call)}};
 handle_cast({'add_event_listener', {Mod, Args}}, #state{call=Call}=State) ->
     _EvtL = cf_util:start_event_listener(Call, Mod, Args),
