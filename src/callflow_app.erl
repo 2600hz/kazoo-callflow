@@ -16,7 +16,6 @@
 -include_lib("kazoo_stdlib/include/kz_types.hrl").
 
 -export([start/2
-        ,prep_stop/1
         ,stop/1
         ]).
 
@@ -32,11 +31,6 @@
 start(_Type, _Args) ->
     _ = declare_exchanges(),
     callflow_sup:start_link().
-
--spec prep_stop(any()) -> 'ok'.
-prep_stop(_State) ->
-    _ = kz_nodes:unbind_for_pool_state('kz_amqp_sup', whereis('callflow_sup')),
-    'ok'.
 
 %%------------------------------------------------------------------------------
 %% @doc Implement the application stop behaviour.

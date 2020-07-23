@@ -229,7 +229,7 @@ send_pickup(ParkedCallId, Call) ->
 wait_for_pickup(Call) ->
     case kapps_call_command:receive_event(10 * ?MILLISECONDS_IN_SECOND) of
         {'ok', Evt} ->
-            pickup_event(Call, kz_util:get_event_type(Evt), Evt);
+            pickup_event(Call, kz_api:event_type(Evt), Evt);
         {'error', 'timeout'}=E ->
             lager:debug("timed out"),
             E

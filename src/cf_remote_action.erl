@@ -52,7 +52,7 @@ wait_for_msg(ActionId, Call) ->
             cf_exe:continue(<<"REMOTE_UNAVAILABLE">>, Call);
 
         {'amqp_msg', JObj} ->
-            Evt = kz_util:get_event_type(JObj),
+            Evt = kz_api:event_type(JObj),
             CallId = {kz_call_event:call_id(JObj), kapps_call:call_id(Call)},
             MsgId = {kz_api:msg_id(JObj), ActionId},
             handle_msg(Evt, CallId, MsgId, JObj, Call);

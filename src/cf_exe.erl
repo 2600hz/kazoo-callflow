@@ -340,8 +340,7 @@ init_cf_exe(Pid, #{request := JObj
                   }) ->
     proc_lib:init_ack(Pid, {'ok', self()}),
     kz_amqp_channel:consumer_channel(props:get_value('channel', Props)),
-    CallId = kz_api:call_id(JObj),
-    _ = kz_hooks:bind_call_id(CallId),
+    _ = kz_events:bind_call_id(kz_api:call_id(JObj)),
     case Fun(JObj, Props) of
         {'ok', Call} ->
             process_flag('trap_exit', 'true'),
@@ -518,8 +517,8 @@ handle_cast({'callid_update', NewCallId}, #state{call=Call}=State) ->
     kz_log:put_callid(NewCallId),
     PrevCallId = kapps_call:call_id_direct(Call),
     lager:info("updating callid to ~s (from ~s), catch you on the flip side", [NewCallId, PrevCallId]),
-    _ = kz_hooks:unbind_call_id(PrevCallId),
-    _ = kz_hooks:bind_call_id(NewCallId),
+    _ = kz_events:unbind_call_id(PrevCallId),
+    _ = kz_events:bind_call_id(NewCallId),
     {'noreply', State#state{call=kapps_call:set_call_id(NewCallId, Call)}};
 handle_cast({'add_event_listener', {Mod, Args}}, #state{call=Call}=State) ->
     _EvtL = cf_util:start_event_listener(Call, Mod, Args),
@@ -539,9 +538,6 @@ handle_cast(_Msg, State) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle_info(any(), state()) -> kz_types:handle_info_ret_state(state()).
-handle_info({'amqp_msg', JObj}, State) ->
-    _ = handle_event(JObj, State),
-    {'noreply', State};
 handle_info({'kapi', {_, _, JObj}}, State) ->
     _ = handle_event(JObj, State),
     {'noreply', State};
@@ -637,7 +633,7 @@ handle_event(JObj, #state{cf_module_pid=PidRef
                  ModPid -> [ModPid | Others]
              end,
 
-    case {kz_util:get_event_type(JObj), kz_call_event:call_id(JObj)} of
+    case {kz_api:event_type(JObj), kz_call_event:call_id(JObj)} of
         {{<<"call_event">>, <<"CHANNEL_DESTROY">>}, CallId} ->
             handle_channel_destroyed(Self, Notify, JObj);
         {{<<"call_event">>, <<"CHANNEL_DISCONNECTED">>}, CallId} ->
