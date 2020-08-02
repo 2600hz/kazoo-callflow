@@ -61,13 +61,16 @@ bridge_to_endpoints(Data, Call) ->
 
     case kz_endpoint:build(EndpointId, Params, Call) of
         {'error', _}=E -> E;
+        {'ok', []} ->
+            lager:info("no endpoints built"),
+            {'error', 'not_found'};
         {'ok', Endpoints} ->
             bridge_to_endpoints(Data, Call, Endpoints)
     end.
 
 -spec bridge_to_endpoints(kz_json:object(), kapps_call:call(), kz_endpoints:endpoints()) ->
           cf_api_bridge_return().
-bridge_to_endpoints(Data, Call, Endpoints) ->
+bridge_to_endpoints(Data, Call, [_|_]=Endpoints) ->
     FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, 'undefined'),
     Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
     IgnoreEarlyMedia = kz_endpoints:ignore_early_media(Endpoints),
