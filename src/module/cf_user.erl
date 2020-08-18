@@ -87,4 +87,9 @@ maybe_handle_bridge_failure(Reason, Call) ->
 get_endpoints('undefined', _, _) -> [];
 get_endpoints(UserId, Data, Call) ->
     Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
-    kz_endpoints:by_owner_id(UserId, Params, Call).
+    case kz_endpoint:build(UserId, Params, Call) of
+        {ok, Endpoints} -> Endpoints;
+        {error, Error} ->
+            lager:warning("error ~p building endpoint for ~s", [Error, UserId]),
+            []
+    end.

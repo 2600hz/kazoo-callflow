@@ -15,7 +15,9 @@
 
 -include_lib("callflow/src/callflow.hrl").
 
--export([handle/2]).
+-export([handle/2
+        ,bridge_to_endpoints/3
+        ]).
 
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module, attempts to call an endpoint as defined
@@ -59,21 +61,29 @@ bridge_to_endpoints(Data, Call) ->
 
     case kz_endpoint:build(EndpointId, Params, Call) of
         {'error', _}=E -> E;
+        {'ok', []} ->
+            lager:info("no endpoints built"),
+            {'error', 'not_found'};
         {'ok', Endpoints} ->
-            FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, 'undefined'),
-            Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
-            IgnoreEarlyMedia = kz_endpoints:ignore_early_media(Endpoints),
-            Strategy = kz_json:get_ne_binary_value(<<"dial_strategy">>, Data, <<"simultaneous">>),
-            CustomSIPHeaders = kz_json:get_ne_json_value(<<"custom_sip_headers">>, Data),
-
-            kapps_call_command:b_bridge(Endpoints
-                                       ,Timeout
-                                       ,Strategy
-                                       ,IgnoreEarlyMedia
-                                       ,'undefined' % Ringback
-                                       ,CustomSIPHeaders
-                                       ,<<"false">> % IgnoreForward
-                                       ,FailOnSingleReject
-                                       ,Call
-                                       )
+            bridge_to_endpoints(Data, Call, Endpoints)
     end.
+
+-spec bridge_to_endpoints(kz_json:object(), kapps_call:call(), kz_endpoints:endpoints()) ->
+          cf_api_bridge_return().
+bridge_to_endpoints(Data, Call, [_|_]=Endpoints) ->
+    FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, 'undefined'),
+    Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
+    IgnoreEarlyMedia = kz_endpoints:ignore_early_media(Endpoints),
+    Strategy = kz_json:get_ne_binary_value(<<"dial_strategy">>, Data, <<"simultaneous">>),
+    CustomSIPHeaders = kz_json:get_ne_json_value(<<"custom_sip_headers">>, Data),
+
+    kapps_call_command:b_bridge(Endpoints
+                               ,Timeout
+                               ,Strategy
+                               ,IgnoreEarlyMedia
+                               ,'undefined' % Ringback
+                               ,CustomSIPHeaders
+                               ,<<"false">> % IgnoreForward
+                               ,FailOnSingleReject
+                               ,Call
+                               ).
