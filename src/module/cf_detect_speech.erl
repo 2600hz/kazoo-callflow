@@ -33,8 +33,8 @@ handle(Data, Call, <<"start">>) ->
     cf_exe:continue(Call);
 
 handle(_Data, Call, <<"stop">>) ->
-	kapps_call_command:stop_detect_speech(Call),
-	cf_exe:continue(Call).
+    kapps_call_command:stop_detect_speech(Call),
+    cf_exe:continue(Call).
 
 -spec get_action(kz_json:object()) -> kz_term:ne_binary().
 get_action(Data) ->

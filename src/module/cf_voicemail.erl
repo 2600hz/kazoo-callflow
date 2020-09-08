@@ -533,7 +533,7 @@ handle_full_mailbox(#mailbox{mailbox_id=VMBId
             ,{<<"Voicemail-Box">>, VMBId}
             ,{<<"Max-Message-Count">>, MaxCount}
             ,{<<"Message-Count">>, Count}
-             | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
+            | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
             ],
     kapps_notify_publisher:cast(Props, fun kapi_notifications:publish_voicemail_full/1),
 
@@ -1302,7 +1302,7 @@ config_menu(#mailbox{interdigit_timeout=Interdigit}=Box
             lager:info("failed to collect config menu selection: ~p", [_E])
     end;
 config_menu(_Box, _Call, Loop) when Loop > ?MAX_CONFIG_MENU_LOOPS ->
-        lager:debug("not config menu option selected after ~p tries", [Loop - 1]).
+    lager:debug("not config menu option selected after ~p tries", [Loop - 1]).
 
 -spec handle_config_selection(mailbox(), kapps_call:call(), pos_integer(), binary()) ->
           'ok' | mailbox() |
