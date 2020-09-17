@@ -1815,22 +1815,22 @@ get_mailbox_profile(Data, Call) ->
                     ,exists = 'true'
                     ,keys = populate_keys(Call)
                     ,announcement_only =
-                         kzd_voicemail_box:announcement_only(MailboxJObj, Default#mailbox.announcement_only)
+                         kzd_vmboxes:announcement_only(MailboxJObj, Default#mailbox.announcement_only)
                     ,skip_instructions =
-                         kzd_voicemail_box:skip_instructions(MailboxJObj, Default#mailbox.skip_instructions)
+                         kzd_vmboxes:skip_instructions(MailboxJObj, Default#mailbox.skip_instructions)
                     ,skip_greeting =
-                         kzd_voicemail_box:skip_greeting(MailboxJObj, Default#mailbox.skip_greeting)
+                         kzd_vmboxes:skip_greeting(MailboxJObj, Default#mailbox.skip_greeting)
                     ,skip_envelope =
-                         kzd_voicemail_box:skip_envelope(MailboxJObj, Default#mailbox.skip_envelope)
+                         kzd_vmboxes:skip_envelope(MailboxJObj, Default#mailbox.skip_envelope)
                     ,pin =
-                         kzd_voicemail_box:pin(MailboxJObj, <<>>)
+                         kzd_vmboxes:pin(MailboxJObj, <<>>)
                     ,timezone =
-                         kzd_voicemail_box:timezone(MailboxJObj)
+                         kzd_vmboxes:timezone(MailboxJObj)
                     ,mailbox_number =
-                         kzd_voicemail_box:mailbox_number(MailboxJObj, kapps_call:request_user(Call))
+                         kzd_vmboxes:mailbox(MailboxJObj, kapps_call:request_user(Call))
                     ,require_pin = should_require_pin(MailboxJObj)
                     ,check_if_owner =
-                         kzd_voicemail_box:check_if_owner(MailboxJObj, CheckIfOwner)
+                         kzd_vmboxes:check_if_owner(MailboxJObj, CheckIfOwner)
                     ,unavailable_media_id =
                          kz_json:get_ne_value([<<"media">>, <<"unavailable">>], MailboxJObj)
                     ,temporary_unavailable_media_id =
@@ -1840,7 +1840,7 @@ get_mailbox_profile(Data, Call) ->
                     ,owner_id =
                          OwnerId
                     ,is_setup =
-                         kzd_voicemail_box:is_setup(MailboxJObj, 'false')
+                         kzd_vmboxes:is_setup(MailboxJObj, 'false')
                     ,max_message_count =
                          kz_term:to_integer(MaxMessageCount)
                     ,max_message_length = find_max_message_length([Data, MailboxJObj])
@@ -1863,7 +1863,7 @@ get_mailbox_profile(Data, Call) ->
                     ,not_configurable=
                          kz_json:is_true(<<"not_configurable">>, MailboxJObj, 'false')
                     ,account_db = AccountDb
-                    ,media_extension = kzd_voicemail_box:media_extension(MailboxJObj)
+                    ,media_extension = kzd_vmboxes:media_extension(MailboxJObj)
                     ,forward_type = ?DEFAULT_FORWARD_TYPE
                     ,oldest_message_first = kzd_vmboxes:oldest_message_first(MailboxJObj)
                     ,operator_number = kzd_vmboxes:operator_number(MailboxJObj)
@@ -1877,7 +1877,7 @@ get_mailbox_profile(Data, Call) ->
 should_require_pin(MailboxJObj) ->
     case ?FORCE_REQUIRE_PIN of
         'true' -> 'true';
-        'false' -> kzd_voicemail_box:pin_required(MailboxJObj)
+        'false' -> kzd_vmboxes:require_pin(MailboxJObj)
     end.
 
 -spec is_ff_rw_enabled(kz_json:object()) -> boolean().
