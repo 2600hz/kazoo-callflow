@@ -95,15 +95,28 @@ maybe_closed_group_restriction(EndpointJObj, Call) ->
 -spec maybe_classification_restriction(kz_json:object(), kapps_call:call()) ->
           boolean().
 maybe_classification_restriction(EndpointJObj, Call) ->
-    Request = find_request(Call),
-    AccountId = kapps_call:account_id(Call),
-    DialPlan = kz_json:get_json_value(<<"dial_plan">>, EndpointJObj, kz_json:new()),
-    Number = knm_converters:normalize(Request, AccountId, DialPlan),
+    Number = maybe_normalize_number(EndpointJObj, Call),
     Classification = knm_converters:classify(Number),
     lager:debug("classified number ~s as ~s, testing for call restrictions"
                ,[Number, Classification]
                ),
     kz_json:get_value([<<"call_restriction">>, Classification, <<"action">>], EndpointJObj) =:= <<"deny">>.
+
+-spec maybe_normalize_number(kz_json:object(), kapps_call:call()) -> kz_term:ne_binary().
+maybe_normalize_number(EndpointJObj, Call) ->
+    AccountId = kapps_call:account_id(Call),
+    DialPlan = kz_json:get_json_value(<<"dial_plan">>, EndpointJObj, kz_json:new()),
+    Request = find_request(Call),
+    case kz_json:is_empty(DialPlan)
+        andalso kapps_call:kvs_fetch('cf_capture_group', Call) =:= 'undefined'
+    of
+        'true' ->
+            lager:debug("no dial plan or capture group, using original dialed number '~s'", [Request]),
+            Request;
+        'false' ->
+            lager:debug("normalizing number '~s'", [Request]),
+            knm_converters:normalize(Request, AccountId, DialPlan)
+    end.
 
 -spec find_request(kapps_call:call()) -> kz_term:ne_binary().
 find_request(Call) ->
