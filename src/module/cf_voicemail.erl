@@ -35,6 +35,8 @@
 -export([handle/2]).
 -export([new_message/4]).
 
+-type play_envelope_action() :: 'play_after' | 'play_before' | 'skip'.
+
 -define(KEY_VOICEMAIL, <<"voicemail">>).
 -define(KEY_MAX_MESSAGE_COUNT, <<"max_message_count">>).
 -define(KEY_MAX_MESSAGE_LENGTH, <<"max_message_length">>).
@@ -175,7 +177,7 @@
                  ,exists = 'false' :: boolean()
                  ,skip_instructions = 'false' :: boolean()
                  ,skip_greeting = 'false' :: boolean()
-                 ,skip_envelope = 'false' :: boolean()
+                 ,play_envelope_action = 'play_after' :: play_envelope_action()
                  ,announcement_only = 'false' :: boolean()
                  ,unavailable_media_id :: kz_term:api_ne_binary()
                  ,temporary_unavailable_media_id :: kz_term:api_ne_binary()
@@ -881,11 +883,13 @@ message_count_prompts(New, Saved) ->
 %%------------------------------------------------------------------------------
 -spec message_prompt(kz_json:objects(), binary(), non_neg_integer(), mailbox()) ->
           kapps_call_command:audio_macro_prompts().
-message_prompt([H|_]=Messages, Message, Count, #mailbox{skip_envelope='false'}=Box) ->
-    message_number(Messages, Count) ++ message_content(Message, Box) ++ message_envelope(H, Box) ++ message_menu();
-message_prompt(Messages, Message, Count, #mailbox{skip_envelope='true'}=Box) ->
+message_prompt([CurrentMessage|_]=UnplayedMessages, CurrentMessageId, Count, #mailbox{play_envelope_action='play_after'}=Box) ->
+    message_number(UnplayedMessages, Count) ++ message_content(CurrentMessageId, Box) ++ message_envelope(CurrentMessage, Box) ++ message_menu();
+message_prompt([CurrentMessage|_]=UnplayedMessages, CurrentMessageId, Count, #mailbox{play_envelope_action='play_before'}=Box) ->
+    message_number(UnplayedMessages, Count) ++ message_envelope(CurrentMessage, Box) ++ message_content(CurrentMessageId, Box) ++ message_menu();
+message_prompt(UnplayedMessages, CurrentMessageId, Count, #mailbox{play_envelope_action = 'skip'}=Box) ->
     lager:debug("mailbox is set to skip playing message envelope"),
-    message_number(Messages, Count) ++ message_content(Message, Box) ++ message_menu().
+    message_number(UnplayedMessages, Count) ++ message_content(CurrentMessageId, Box) ++ message_menu().
 
 %%------------------------------------------------------------------------------
 %% @doc Returns the message number audio macro.
@@ -1871,6 +1875,7 @@ get_mailbox_profile(Data, Call) ->
             SeekDuration = seek_duration(MailboxJObj),
             AfterNotifyAction = after_notify_action(MailboxJObj),
             IsFfRwEnabled = is_ff_rw_enabled(MailboxJObj),
+            PlayEnvelopeAction = play_envelope_action(MailboxJObj),
 
             #mailbox{mailbox_id = MailboxId
                     ,exists = 'true'
@@ -1881,8 +1886,7 @@ get_mailbox_profile(Data, Call) ->
                          kzd_vmboxes:skip_instructions(MailboxJObj, Default#mailbox.skip_instructions)
                     ,skip_greeting =
                          kzd_vmboxes:skip_greeting(MailboxJObj, Default#mailbox.skip_greeting)
-                    ,skip_envelope =
-                         kzd_vmboxes:skip_envelope(MailboxJObj, Default#mailbox.skip_envelope)
+                    ,play_envelope_action = PlayEnvelopeAction
                     ,pin =
                          kzd_vmboxes:pin(MailboxJObj, <<>>)
                     ,timezone =
@@ -1962,6 +1966,21 @@ after_notify_action(MailboxJObj) ->
         {'false', 'true'}  -> 'save';
         {'true', 'false'}  -> 'delete';
         {'true', 'true'}   -> 'save'
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Returns the play_envelope_action() value for a mailbox.
+%% @end
+%%------------------------------------------------------------------------------
+-spec play_envelope_action(kz_json:object()) -> play_envelope_action().
+play_envelope_action(MailboxJObj) ->
+    SkipEnvelope = kzd_vmboxes:skip_envelope(MailboxJObj),
+    EnvelopeAction = kzd_vmboxes:play_envelope_action(MailboxJObj),
+    case {SkipEnvelope, EnvelopeAction} of
+        {'true', _} -> 'skip'; %% Legacy vmbox configuration takes precedence.
+        {_, <<"play_after">>} -> 'play_after';
+        {_, <<"play_before">>} -> 'play_before';
+        {_, <<"skip">>} -> 'skip'
     end.
 
 -spec max_message_count(kapps_call:call()) -> non_neg_integer().
