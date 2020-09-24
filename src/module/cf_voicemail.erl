@@ -35,6 +35,9 @@
 -export([handle/2]).
 -export([new_message/4]).
 
+-type after_forward_action() :: 'prompt' | 'save'.
+-type forward_message_action() :: 'append' | 'forward' | 'return'.
+
 -define(KEY_VOICEMAIL, <<"voicemail">>).
 -define(KEY_MAX_MESSAGE_COUNT, <<"max_message_count">>).
 -define(KEY_MAX_MESSAGE_LENGTH, <<"max_message_length">>).
@@ -195,6 +198,7 @@
                  ,transcribe_voicemail = kvm_util:transcribe_default() :: boolean()
                  ,notifications :: kz_term:api_object()
                  ,after_notify_action = 'nothing' :: 'nothing' | 'delete' | 'save'
+                 ,after_forward_action = 'save' :: after_forward_action()
                  ,is_ff_rw_enabled = 'false' :: boolean()
                  ,seek_duration = ?DEFAULT_SEEK_DURATION :: non_neg_integer()
                  ,interdigit_timeout = kapps_call_command:default_interdigit_timeout() :: pos_integer()
@@ -396,19 +400,20 @@ find_mailbox_by_number(BoxNum, Call) ->
         Error -> Error
     end.
 
--spec find_destination_mailbox(mailbox(), kapps_call:call(), kz_term:ne_binary(), non_neg_integer()) -> mailbox().
+-spec find_destination_mailbox(mailbox(), kapps_call:call(), kz_term:ne_binary(), non_neg_integer()) ->
+          {'ok', mailbox()} | {'error', 'not_found'}.
 find_destination_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}, Call, _SrcBoxId, Loop)
   when Loop > MaxLoginAttempts ->
     lager:info("maximum number of invalid attempts to find destination mailbox"),
     _ = kapps_call_command:b_prompt(<<"vm-forward_abort">>, Call),
-    #mailbox{};
+    {'error', 'not_found'};
 find_destination_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}=Box, Call, SrcBoxId, Loop) ->
     case find_mailbox(#mailbox{}, Call, <<"vm-enter_forward_id">>, Loop) of
         {'ok', #mailbox{mailbox_id=SrcBoxId}, NewLoop} ->
             lager:info("source mailbox can't be a destination mailbox"),
             _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
             find_destination_mailbox(Box, Call, SrcBoxId, NewLoop + 1);
-        {'ok', DestBox, _NewLoop} -> DestBox;
+        {'ok', DestBox, _NewLoop} -> {'ok', DestBox};
         {'error', 'not_found'} ->
             %% can't find mailbox, set Loop to max to play abort prompts in above function clause
             find_destination_mailbox(Box, Call, SrcBoxId, MaxLoginAttempts + 1)
@@ -1006,9 +1011,7 @@ play_message_menu(Prompt, [H|T]=Messages, PrevMessages, Count, #mailbox{seek_dur
         {'ok', 'forward'} ->
             lager:info("caller chose to forward the message"),
             _ = kapps_call_command:flush(Call),
-            forward_message(H, Box, Call),
-            {_, NMessage} = save_message(H, AccountId, Call),
-            play_messages(T, [NMessage|PrevMessages], Count, Box, Call);
+            forward_message(Messages, PrevMessages, Count, Box, Call);
         {'ok', 'rewind'} ->
             lager:info("caller chose to rewind part of the message"),
             _ = kapps_call_command:seek('rewind', SeekDuration, Call),
@@ -1107,39 +1110,70 @@ play_prev_message(Messages, [H|T], Count, Box, Call) ->
     play_messages([H|Messages], T, Count, Box, Call).
 
 %%------------------------------------------------------------------------------
-%% @doc Main function for forwarding a message to another vmbox of this account
+%% @doc Main function for forwarding a message to another vmbox of this account.
 %% @end
 %%------------------------------------------------------------------------------
--spec forward_message(kz_json:object(), mailbox(), kapps_call:call()) -> 'ok'.
-forward_message(Message, #mailbox{mailbox_id=SrcBoxId} = SrcBox, Call) ->
+-spec forward_message(kz_json:objects(), kz_json:objects(), non_neg_integer(), mailbox(), kapps_call:call()) ->
+          'ok' | 'complete'.
+forward_message([CurrentMessage|NextMessages]=Messages, PrevMessages, Count, Box, Call) ->
+    AccountId = kapps_call:account_id(Call),
+    case maybe_forward_message(CurrentMessage, Box, Call) of
+        'prompt' ->
+            play_message_menu(message_menu(), Messages, PrevMessages, Count, Box, Call);
+        'save' ->
+            {_, SavedMessage} = save_message(CurrentMessage, AccountId, Call),
+            play_messages(NextMessages, [SavedMessage|PrevMessages], Count, Box, Call)
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Forwards the current message if the user enters a valid vmbox number.
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_forward_message(kz_json:object(), mailbox(), kapps_call:call()) -> after_forward_action().
+maybe_forward_message(Message, #mailbox{mailbox_id=SrcBoxId}=SrcBox, Call) ->
     lager:info("enter destination mailbox number"),
     _ = kapps_call_command:b_flush(Call),
-    PossibleBox = find_destination_mailbox(#mailbox{}, Call, SrcBoxId, 1),
-    forward_message(Message, SrcBox, PossibleBox, Call).
+    case find_destination_mailbox(#mailbox{}, Call, SrcBoxId, 1) of
+        {'ok', DestBox} ->
+            forward_message(Message, SrcBox, DestBox, Call);
+        _ ->
+            %% The user didn't enter a valid destination mailbox within the retry limit.
+            lager:info("message not forwarded, returning to message menu..."),
+            'prompt'
+    end.
 
--spec forward_message(kz_json:object(), mailbox(), mailbox(), kapps_call:call()) -> 'ok'.
-forward_message(_Message, _SrcBox, #mailbox{exists='false'}, _Call) ->
-    lager:info("unable to find destination mailbox, returning to message menu...");
-forward_message(Message, #mailbox{mailbox_id = SrcBoxId
-                                 ,forward_type = ForwardType
+%%------------------------------------------------------------------------------
+%% @doc Forwards a message, optionally allowing the user to prepend a message.
+%% @end
+%%------------------------------------------------------------------------------
+-spec forward_message(kz_json:object(), mailbox(), mailbox(), kapps_call:call()) -> after_forward_action().
+forward_message(Message, #mailbox{mailbox_id=SrcBoxId
+                                 ,after_forward_action=AfterForwardAction
+                                 ,forward_type=ForwardType
                                  }, DestBox, Call) ->
     case ForwardType =:= <<"prepend_forward">>
         andalso forward_message_menu(DestBox, Call)
     of
         'false' ->
-            forward_message('undefined', 0, Message, SrcBoxId, DestBox, Call);
-        {'ok', 'return'} -> 'ok';
+            forward_message('undefined', 0, Message, SrcBoxId, DestBox, Call),
+            AfterForwardAction;
+        {'ok', 'return'} ->
+            'prompt'; %% The user decided not to forward, so prompt again.
         {'ok', 'append'} ->
-            compose_forward_message(Message, SrcBoxId, DestBox, Call);
+            compose_forward_message(Message, SrcBoxId, DestBox, Call),
+            AfterForwardAction;
         {'ok', 'forward'} ->
-            forward_message('undefined', 0, Message, SrcBoxId, DestBox, Call);
+            forward_message('undefined', 0, Message, SrcBoxId, DestBox, Call),
+            AfterForwardAction;
         {'error', _R} ->
-            lager:info("error during forward message playback: ~p", [_R])
+            %% The error has already been handled, but the call may now be disconnected.
+            lager:error("error during forward message menu: ~p", [_R]),
+            'save'
     end.
 
 -spec forward_message_menu(mailbox(), kapps_call:call()) ->
           {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
-          {'ok', 'append' | 'forward' | 'return'}.
+          {'ok', forward_message_action()}.
 forward_message_menu(#mailbox{interdigit_timeout=Interdigit}=DestBox, Call) ->
     lager:info("playing forward message menu"),
 
@@ -1265,7 +1299,7 @@ delete_message(Message, AccountId, BoxId, Call) ->
     kvm_message:set_folder({?VM_FOLDER_DELETED, 'false'}, Message, AccountId).
 
 %%------------------------------------------------------------------------------
-%% @doc Loops over the message menu after the first play back util the
+%% @doc Loops over the message menu after the first play back until the
 %% user provides a valid option
 %% @end
 %%------------------------------------------------------------------------------
@@ -1870,6 +1904,7 @@ get_mailbox_profile(Data, Call) ->
 
             SeekDuration = seek_duration(MailboxJObj),
             AfterNotifyAction = after_notify_action(MailboxJObj),
+            AfterForwardAction = after_forward_action(MailboxJObj),
             IsFfRwEnabled = is_ff_rw_enabled(MailboxJObj),
 
             #mailbox{mailbox_id = MailboxId
@@ -1913,6 +1948,7 @@ get_mailbox_profile(Data, Call) ->
                     ,notifications =
                          kz_json:get_json_value(<<"notifications">>, MailboxJObj)
                     ,after_notify_action = AfterNotifyAction
+                    ,after_forward_action = AfterForwardAction
                     ,is_ff_rw_enabled = IsFfRwEnabled
                     ,seek_duration = SeekDuration
                     ,interdigit_timeout =
@@ -1962,6 +1998,17 @@ after_notify_action(MailboxJObj) ->
         {'false', 'true'}  -> 'save';
         {'true', 'false'}  -> 'delete';
         {'true', 'true'}   -> 'save'
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Returns the after_forward_action() value for a mailbox.
+%% @end
+%%------------------------------------------------------------------------------
+-spec after_forward_action(kz_json:object()) -> after_forward_action().
+after_forward_action(MailboxJObj) ->
+    case kzd_vmboxes:after_forward_action(MailboxJObj) of
+        <<"prompt">> -> 'prompt';
+        <<"save">> -> 'save'
     end.
 
 -spec max_message_count(kapps_call:call()) -> non_neg_integer().
