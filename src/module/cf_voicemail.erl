@@ -1034,8 +1034,10 @@ play_message_menu(Prompt, [H|T]=Messages, PrevMessages, Count, #mailbox{seek_dur
                     end
             end;
         {'error', _} ->
+            lager:info("error during message playback"),
             _ = kapps_call_command:flush(Call),
-            lager:info("error during message playback")
+            _ = save_message(H, AccountId, Call),
+            'ok'
     end.
 
 -spec maybe_branch_call(kapps_call:call(), kz_term:ne_binary(), mailbox()) -> 'ok'| 'error'.
