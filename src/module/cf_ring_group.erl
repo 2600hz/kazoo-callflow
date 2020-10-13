@@ -133,9 +133,26 @@ attempt_endpoints(Endpoints, Data, Call) ->
 
 -spec get_endpoints(kz_json:object(), kapps_call:call()) -> kz_json:objects().
 get_endpoints(Data, Call) ->
+    get_endpoints(Data, Call, kz_json:get_ne_binary_value(<<"group_id">>, Data)).
+
+-spec get_endpoints(kz_json:object(), kapps_call:call(), kz_term:api_ne_binary()) -> kz_json:objects().
+get_endpoints(Data, Call, 'undefined') ->
     maybe_order_endpoints_by_delay(strategy(Data)
                                   ,receive_endpoints(start_builders(Data, Call))
-                                  ).
+                                  );
+get_endpoints(Data, Call, GroupId) ->
+    lager:debug("merging data to group ~s settings", [GroupId]),
+    AccountDb = kapps_call:account_db(Call),
+    case kz_datamgr:open_cache_doc(AccountDb, GroupId) of
+        {'ok', JObj} ->
+            NewData = kz_json:merge(JObj, Data),
+            maybe_order_endpoints_by_delay(strategy(NewData)
+                                          ,receive_endpoints(start_builders(NewData, Call))
+                                          );
+        {'error', _Reason} ->
+            lager:warning("unable to open group document ~s: ~p", [GroupId, _Reason]),
+            []
+    end.
 
 -spec maybe_order_endpoints_by_delay(kz_term:ne_binary(), kz_json:objects()) -> kz_json:objects().
 maybe_order_endpoints_by_delay(?DIAL_METHOD_SIMUL, Endpoints) ->
