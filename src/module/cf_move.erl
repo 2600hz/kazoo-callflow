@@ -63,7 +63,7 @@ get_channels(OwnerId, Call) ->
 clean_channels(JObjs) ->
     lists:foldl(fun clean_channels_fold/2, dict:new(), JObjs).
 
--spec clean_channels_fold(kz_json:object(), dict:new()) -> dict:new().
+-spec clean_channels_fold(kz_json:object(), dict:dict()) -> dict:dict().
 clean_channels_fold(JObj, Dict) ->
     lists:foldl(fun(Channel, D) ->
                         UUID = kz_json:get_ne_binary_value(<<"uuid">>, Channel),

@@ -375,13 +375,16 @@ get_endpoint_id_by_sip_username(AccountDb, Username) ->
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec get_operator_callflow(kz_term:ne_binary()) -> {'ok', kz_json:object()} |
+-spec get_operator_callflow(kz_term:ne_binary()) ->
+          {'ok', kz_json:object()} |
           {'error', any()}.
 get_operator_callflow(Account) -> get_operator_callflow(Account, 'undefined').
 
--spec get_operator_callflow(kz_term:ne_binary(), kz_term:api_ne_binary()) -> {'ok', kz_json:object()} |
+-spec get_operator_callflow(kz_term:ne_binary(), kz_term:api_ne_binary()) ->
+          {'ok', kz_json:object()} |
           {'error', any()}.
-get_operator_callflow(Account, 'undefined') -> get_operator_callflow(Account, ?OPERATOR_KEY);
+get_operator_callflow(Account, 'undefined') ->
+    get_operator_callflow(Account, ?OPERATOR_KEY);
 get_operator_callflow(Account, OpNum) ->
     case cf_flow:lookup(OpNum, Account) of
         {'ok', _, 'true'} ->
@@ -774,7 +777,7 @@ normalize_capture_group(CaptureGroup) ->
 %% to use system default normalizer.
 %% @end
 %%------------------------------------------------------------------------------
--spec normalize_capture_group(kz_term:api_binary(), kapps_call:call() | kapps_call:api_ne_binary()) -> kz_term:api_ne_binary().
+-spec normalize_capture_group(kz_term:api_binary(), kapps_call:call() | kz_term:api_ne_binary()) -> kz_term:api_ne_binary().
 normalize_capture_group('undefined', _) ->
     'undefined';
 normalize_capture_group(<<>>, _) ->
