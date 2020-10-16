@@ -13,6 +13,7 @@
 
 -include("callflow.hrl").
 -include("module/cf_temporal_route.hrl").
+-include_lib("kazoo_stdlib/include/kz_types.hrl"). %% ?SECONDS_IN_DAY
 
 -ifdef(PROPER).
 -include_lib("proper/include/proper.hrl").
@@ -997,3 +998,46 @@ yearly_every_ordinal_recurrence_test_() ->
     ,?_assertEqual({2017,?APR,29}, cf_temporal_route:next_rule_date(#rule{cycle = <<"yearly">>, interval=2, ordinal = <<"fifth">>, wdays=[<<"saturday">>], month=?APR, start_date={2011,?JAN,1}}, {2011,?MAY,1}))
     ,?_assertEqual({2017,?APR,30}, cf_temporal_route:next_rule_date(#rule{cycle = <<"yearly">>, interval=2, ordinal = <<"fifth">>, wdays=[<<"sunday">>], month=?APR, start_date={2011,?JAN,1}}, {2011,?MAY,1}))
     ].
+
+maybe_build_rule_test_() ->
+    TZ = <<"UTC">>,
+    NowDT = {Today, _} = kz_time:adjust_utc_datetime(calendar:universal_time(), TZ),
+    LSec = calendar:datetime_to_gregorian_seconds(NowDT),
+
+    TodayGS = kz_time:to_gregorian_seconds({Today, {0, 0, 0}}, TZ),
+    YesterdayGS = TodayGS - ?SECONDS_IN_DAY,
+    TomorrowGS = TodayGS + ?SECONDS_IN_DAY,
+
+    RunTest = fun(Id, RulesDoc) ->
+                      cf_temporal_route:maybe_build_rule([], LSec, <<"unknown">>, TZ, NowDT, [], Id, RulesDoc)
+              end,
+
+    Inputs = [{"Just StartDate, in the past: rule built", kz_binary:rand_hex(4), rules_doc(YesterdayGS)}
+             ,{"Just StartDate, in the future: rule skipped", 'undefined', rules_doc(TomorrowGS)}
+             ,{"StartDate in the past, EndDate in the past: rule skipped", 'undefined', rules_doc(YesterdayGS, YesterdayGS+1)}
+             ,{"StartDate in the past, EndDate in the future: rule built", kz_binary:rand_hex(4), rules_doc(YesterdayGS, TomorrowGS)}
+             ,{"StartDate in the future, EndDate in the future: rule skipped", 'undefined', rules_doc(TomorrowGS, TomorrowGS+1)}
+             ],
+    [{Label, try_rules_doc(RunTest, RuleId, RulesDoc)}
+     || {Label, RuleId, RulesDoc} <- Inputs
+    ].
+
+try_rules_doc(RunTest, 'undefined', RulesDoc) ->
+    ?_assertEqual([], RunTest(kz_binary:rand_hex(4), RulesDoc));
+try_rules_doc(RunTest, RuleId, RulesDoc) ->
+    [BuildRule|_] = RunTest(RuleId, RulesDoc),
+    ?_assertEqual(RuleId, rule_id(BuildRule)).
+
+-spec rules_doc(kz_time:gregorian_seconds()) -> kzd_temporal_rules:doc().
+rules_doc(StartDate) ->
+    rules_doc(StartDate, 'undefined').
+
+-spec rules_doc(kz_time:gregorian_seconds(), kz_time:gregorian_seconds()) -> kzd_temporal_rules:doc().
+rules_doc(StartDate, EndDate) ->
+    Setters = [{fun kzd_temporal_rules:set_start_date/2, StartDate}
+              ,{fun kzd_temporal_rules:set_end_date/2, EndDate}
+              ],
+    kz_doc:setters(kzd_temporal_rules:new(), Setters).
+
+-spec rule_id(#rule{}) -> kz_term:ne_binary().
+rule_id(#rule{id = Id}) -> Id.

@@ -34,6 +34,7 @@
 -ifdef(TEST).
 -export([next_rule_date/2
         ,sort_wdays/1
+        ,maybe_build_rule/8
         ]).
 -endif.
 
@@ -168,12 +169,12 @@ get_temporal_rules(#temporal{local_sec=LSec
                   ) ->
     get_temporal_rules(Routes, LSec, kapps_call:account_db(Call), TZ, []).
 
--spec get_temporal_rules(kz_json:path(), non_neg_integer(), kz_term:ne_binary(), kz_term:ne_binary(), rules()) -> rules().
+-spec get_temporal_rules(kz_json:path(), kz_time:gregorian_seconds(), kz_term:ne_binary(), kz_term:ne_binary(), rules()) -> rules().
 get_temporal_rules(Routes, LSec, AccountDb, <<TZ/binary>>, Rules) ->
     NowDatetime = kz_time:adjust_utc_datetime(calendar:universal_time(), TZ),
     get_temporal_rules(Routes, LSec, AccountDb, TZ, NowDatetime, Rules).
 
--spec get_temporal_rules(routes(), non_neg_integer(), kz_term:ne_binary(), kz_term:ne_binary(), kz_time:datetime(), rules()) -> rules().
+-spec get_temporal_rules(routes(), kz_time:gregorian_seconds(), kz_term:ne_binary(), kz_term:ne_binary(), kz_time:datetime(), rules()) -> rules().
 get_temporal_rules([], _, _, _, _, Rules) -> lists:reverse(Rules);
 get_temporal_rules([{Route, Id}|Routes], LSec, AccountDb, TZ, NowDatetime, Rules) ->
     case kz_datamgr:open_cache_doc(AccountDb, Route) of
@@ -184,21 +185,36 @@ get_temporal_rules([{Route, Id}|Routes], LSec, AccountDb, TZ, NowDatetime, Rules
             maybe_build_rule(Routes, LSec, AccountDb, TZ, NowDatetime, Rules, Id, JObj)
     end.
 
--spec maybe_build_rule(routes(), non_neg_integer(), kz_term:ne_binary(), kz_term:ne_binary(), kz_time:datetime(), rules(), kz_term:ne_binary(), kzd_temporal_rules:doc()) -> rules().
+-spec maybe_build_rule(routes(), kz_time:gregorian_seconds(), kz_term:ne_binary(), kz_term:ne_binary(), kz_time:datetime(), rules(), kz_term:ne_binary(), kzd_temporal_rules:doc()) -> rules().
 maybe_build_rule(Routes, LSec, AccountDb, TZ, NowDatetime, Rules, Id, RulesDoc) ->
     StartDate = kz_date:from_gregorian_seconds(kzd_temporal_rules:start_date(RulesDoc, LSec), TZ),
+    EndDate = maybe_date_from_gregorian_seconds(kzd_temporal_rules:end_date(RulesDoc), TZ),
     RuleName = kzd_temporal_rules:name(RulesDoc, ?RULE_DEFAULT_NAME),
 
-    case kz_date:relative_difference(NowDatetime, {StartDate, {0,0,0}}) of
-        'future' ->
-            lager:warning("rule ~p is in the future discarding", [RuleName]),
+    case should_build_rule(NowDatetime, {StartDate, {0,0,0}}, {EndDate, {23, 59,59}}) of
+        'false' ->
+            lager:warning("rule ~p is either in the past or in the future, discarding", [RuleName]),
             get_temporal_rules(Routes, LSec, AccountDb, TZ, NowDatetime, Rules);
-        _ ->
-            get_temporal_rules(Routes, LSec, AccountDb, TZ, NowDatetime, [build_rule(Id, RulesDoc, StartDate, RuleName) | Rules])
+        'true' ->
+            lager:debug("building rule ~p (~p)", [RuleName, Id]),
+            get_temporal_rules(Routes, LSec, AccountDb, TZ, NowDatetime, [build_rule(Id, RulesDoc, StartDate, EndDate, RuleName) | Rules])
     end.
 
--spec build_rule(kz_term:ne_binary(), kzd_temporal_rules:doc(), kz_time:date(), kz_term:ne_binary()) -> rule().
-build_rule(Id, RulesDoc, StartDate, RuleName) ->
+-spec maybe_date_from_gregorian_seconds(end_date(), kz_term:ne_binary()) -> end_date().
+maybe_date_from_gregorian_seconds('undefined', _TZ) -> 'undefined';
+maybe_date_from_gregorian_seconds(EndDate, TZ) -> kz_date:from_gregorian_seconds(EndDate, TZ).
+
+-spec should_build_rule(kz_time:datetime(), kz_time:datetime(), kz_time:datetime() | {'undefined', kz_time:time()}) -> boolean().
+should_build_rule(DateTime, StartDateTime, {'undefined', _}) ->
+    %% StartDateTime < Datetime
+    'past' =:= kz_date:relative_difference(DateTime, StartDateTime);
+should_build_rule(DateTime, StartDateTime, EndDateTime) ->
+    %% StartDateTime < Datetime < EndDateTime
+    'past' =:= kz_date:relative_difference(DateTime, StartDateTime)
+        andalso 'future' =:= kz_date:relative_difference(DateTime, EndDateTime).
+
+-spec build_rule(kz_term:ne_binary(), kzd_temporal_rules:doc(), kz_time:date(), end_date(), kz_term:ne_binary()) -> rule().
+build_rule(Id, RulesDoc, StartDate, EndDate, RuleName) ->
     #rule{cycle = kzd_temporal_rules:cycle(RulesDoc, ?RULE_DEFAULT_CYCLE)
          ,days = days_in_rule(RulesDoc)
          ,enabled = kzd_temporal_rules:enabled(RulesDoc, 'undefined')
@@ -208,6 +224,7 @@ build_rule(Id, RulesDoc, StartDate, RuleName) ->
          ,name = RuleName
          ,ordinal = kzd_temporal_rules:ordinal(RulesDoc, ?RULE_DEFAULT_ORDINAL)
          ,start_date = StartDate
+         ,end_date = EndDate
          ,wdays = sort_wdays(kzd_temporal_rules:wdays(RulesDoc, ?RULE_DEFAULT_WDAYS))
          ,wtime_start = kzd_temporal_rules:time_window_start(RulesDoc, ?RULE_DEFAULT_WTIME_START)
          ,wtime_stop = kzd_temporal_rules:time_window_stop(RulesDoc, ?RULE_DEFAULT_WTIME_STOP)
