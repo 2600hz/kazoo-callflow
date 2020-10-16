@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Check/compose Voicemail messages.
 %%%
 %%% <h4>Data options:</h4>
@@ -834,8 +834,7 @@ main_menu(#mailbox{keys=#keys{hear_new=HearNew
                 'ok' -> 'ok';
                 {'error', 'channel_hungup'}=E ->
                     lager:debug("channel has hungup, done trying to setup mailbox"),
-                    E;
-                #mailbox{}=Box1 -> main_menu(Box1, Call)
+                    E
             end;
         _ ->
             main_menu(Box, Call, Loop + 1)
@@ -1454,18 +1453,15 @@ config_prompt(_) ->
     <<"vm-settings_menu">>.
 
 -spec config_menu(mailbox(), kapps_call:call()) ->
-          'ok' | mailbox() |
-          {'error', 'channel_hungup'}.
+          'ok' | {'error', 'channel_hungup'}.
 config_menu(Box, Call) ->
     config_menu(Box, Call, 1).
 
 -spec config_menu(mailbox(), kapps_call:call(), pos_integer()) ->
-          'ok' | mailbox() |
-          {'error', 'channel_hungup'}.
-config_menu(#mailbox{interdigit_timeout=Interdigit}=Box
-           ,Call
-           ,Loop
-           ) when Loop =< ?MAX_CONFIG_MENU_LOOPS ->
+          'ok' | {'error', 'channel_hungup'}.
+config_menu(_Box, _Call, Loop) when Loop > ?MAX_CONFIG_MENU_LOOPS ->
+    lager:debug("no config menu option selected after ~p tries", [Loop - 1]);
+config_menu(#mailbox{interdigit_timeout=Interdigit}=Box, Call, Loop) ->
     lager:info("playing mailbox configuration menu, try ~p", [Loop]),
     _ = kapps_call_command:b_flush(Call),
     Prompt = config_prompt(Box),
@@ -1482,13 +1478,10 @@ config_menu(#mailbox{interdigit_timeout=Interdigit}=Box
             handle_config_selection(Box, Call, Loop, Selection);
         {'error', _E} ->
             lager:info("failed to collect config menu selection: ~p", [_E])
-    end;
-config_menu(_Box, _Call, Loop) when Loop > ?MAX_CONFIG_MENU_LOOPS ->
-    lager:debug("not config menu option selected after ~p tries", [Loop - 1]).
+    end.
 
 -spec handle_config_selection(mailbox(), kapps_call:call(), pos_integer(), binary()) ->
-          'ok' | mailbox() |
-          {'error', 'channel_hungup'}.
+          'ok' | {'error', 'channel_hungup'}.
 handle_config_selection(#mailbox{keys=#keys{rec_unavailable=Selection}
                                 ,media_extension=Ext
                                 }=Box
@@ -1547,7 +1540,8 @@ handle_config_selection(#mailbox{keys=#keys{del_temporary_unavailable=Selection}
                        ,Selection
                        ) ->
     lager:info("caller chose to delete their temporary unavailable greeting"),
-    delete_temporary_unavailable_greeting(Box, Call);
+    Box1 = delete_temporary_unavailable_greeting(Box, Call),
+    config_menu(Box1, Call);
 handle_config_selection(#mailbox{keys=#keys{return_main=Selection}}=Box
                        ,Call
                        ,_Loop
