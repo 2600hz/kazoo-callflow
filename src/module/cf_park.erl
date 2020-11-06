@@ -235,7 +235,7 @@ wait_for_pickup(Call) ->
             E
     end.
 
--spec pickup_event(kapps_call:call(), {kz_term:ne_binary(), kz_term:ne_binary()}, kz_call_event:doc()) ->
+-spec pickup_event(kapps_call:call(), {kz_term:ne_binary(), kz_term:ne_binary()}, kz_call_event:payload()) ->
           'ok' |
           {'error', 'failed'}.
 pickup_event(_Call, {<<"error">>, <<"dialplan">>}, _Evt) ->
