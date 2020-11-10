@@ -40,6 +40,7 @@
 -define(RULE_DEFAULT_WTIME_STOP, ?SECONDS_IN_DAY).
 
 -type interval() :: non_neg_integer().
+-type end_date() :: kz_time:date() | 'undefined'.
 
 -record(rule, {id = <<>> :: binary()
               ,enabled :: kz_term:api_boolean()
@@ -51,6 +52,7 @@
               ,ordinal = ?RULE_DEFAULT_ORDINAL :: ordinal()
               ,month = ?RULE_DEFAULT_MONTH :: kz_time:month()
               ,start_date = ?RULE_DEFAULT_START_DATE :: kz_time:date()
+              ,end_date :: end_date()
               ,wtime_start = ?RULE_DEFAULT_WTIME_START :: non_neg_integer()
               ,wtime_stop = ?RULE_DEFAULT_WTIME_STOP :: non_neg_integer()
               }).

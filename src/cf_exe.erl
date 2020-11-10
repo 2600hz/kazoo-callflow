@@ -621,7 +621,7 @@ handle_info(_Msg, State) ->
 %% @doc Handle call messages, sometimes forward them on.
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_event(kz_call_event:doc(), state()) -> 'ok'.
+-spec handle_event(kz_call_event:payload(), state()) -> 'ok'.
 handle_event(JObj, #state{cf_module_pid=PidRef
                          ,call=Call
                          ,self=Self
@@ -888,7 +888,7 @@ handle_channel_destroyed(Self, Notify, JObj) ->
     channel_destroyed(Self, kz_json:from_list(Prop)),
     relay_message(Notify, JObj).
 
--spec handle_channel_transfer(kapps_call:call(), kz_call_event:doc()) -> 'ok'.
+-spec handle_channel_transfer(kapps_call:call(), kz_call_event:payload()) -> 'ok'.
 handle_channel_transfer(Call, CallEvent) ->
     OrgFetchId = kapps_call:custom_channel_var(<<"Fetch-ID">>, Call),
     NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
@@ -897,7 +897,7 @@ handle_channel_transfer(Call, CallEvent) ->
         'false' -> 'ok'
     end.
 
--spec handle_channel_replaced(kapps_call:call(), kz_call_event:doc(), kz_term:pids()) -> 'ok'.
+-spec handle_channel_replaced(kapps_call:call(), kz_call_event:payload(), kz_term:pids()) -> 'ok'.
 handle_channel_replaced(Call, CallEvent, Notify) ->
     OrgFetchId = kapps_call:custom_channel_var(<<"Fetch-ID">>, Call),
     NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
@@ -909,7 +909,7 @@ handle_channel_replaced(Call, CallEvent, Notify) ->
         'false' -> 'ok'
     end.
 
--spec handle_channel_direct(kapps_call:call(), kz_call_event:doc(), kz_term:pids()) -> 'ok'.
+-spec handle_channel_direct(kapps_call:call(), kz_call_event:payload(), kz_term:pids()) -> 'ok'.
 handle_channel_direct(Call, CallEvent, Notify) ->
     OrgFetchId = kapps_call:custom_channel_var(<<"Fetch-ID">>, Call),
     NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
@@ -921,12 +921,12 @@ handle_channel_direct(Call, CallEvent, Notify) ->
         'false' -> 'ok'
     end.
 
--spec handle_channel_bridged(pid(), kz_term:pids(), kz_call_event:doc(), kapps_call:call()) -> 'ok'.
+-spec handle_channel_bridged(pid(), kz_term:pids(), kz_call_event:payload(), kapps_call:call()) -> 'ok'.
 handle_channel_bridged(Self, Notify, CallEvent, Call) ->
     gen_server:cast(Self, {'set_call', kapps_call:set_call_bridged('true', Call)}),
     relay_message(Notify, CallEvent).
 
--spec handle_usurp(pid(), kapps_call:call(), kz_call_event:doc()) -> 'ok'.
+-spec handle_usurp(pid(), kapps_call:call(), kz_call_event:payload()) -> 'ok'.
 handle_usurp(Self, Call, CallEvent) ->
     OrgFetchId = kapps_call:custom_channel_var(<<"Fetch-ID">>, Call),
     NewFetchId = kz_json:get_ne_binary_value(<<"Fetch-ID">>, CallEvent),
@@ -971,7 +971,7 @@ maybe_hangup_call(#state{}) -> 'ok'.
 hangup_call(Call, Cause) ->
     kapps_call_command:queued_hangup(kapps_call:clear_helpers(Call), Cause).
 
--spec handle_channel_pivoted(kz_types:server_ref(), kz_term:api_pid_ref(), kz_call_event:doc(), kapps_call:call()) -> 'ok'.
+-spec handle_channel_pivoted(kz_types:server_ref(), kz_term:api_pid_ref(), kz_call_event:payload(), kapps_call:call()) -> 'ok'.
 handle_channel_pivoted(Self, PidRef, JObj, Call) ->
     case kz_json:get_value(<<"Application-Data">>, JObj) of
         'undefined' -> lager:info("no app data to pivot");

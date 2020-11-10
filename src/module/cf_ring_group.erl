@@ -261,7 +261,7 @@ resolve_endpoint_ids(Members, EndpointIds, Data, Call) ->
 %% @doc check if there is already an endpoint with the same `EndpointId', `Delay', and
 %% `Timeout' within the given list of `Endpoints'.
 %% @end
--spec is_endpoint_resolved(kz_json:api_binary(), delay(), timeout_t(), endpoint_intermediates() | endpoint_intermediate()) -> boolean().
+-spec is_endpoint_resolved(kz_term:api_binary(), delay(), timeout_t(), endpoint_intermediates() | endpoint_intermediate()) -> boolean().
 is_endpoint_resolved(EndpointId, Delay, Timeout, Endpoints) when is_list(Endpoints) ->
     F = fun(Endpoint) -> is_endpoint_resolved(EndpointId, Delay, Timeout, Endpoint) end,
     lists:any(F, Endpoints);

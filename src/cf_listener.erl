@@ -48,7 +48,7 @@
 %% @doc Starts the server.
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(kz_types:ne_binary()) -> kz_types:startlink_ret().
+-spec start_link(kz_term:ne_binary()) -> kz_types:startlink_ret().
 start_link(Instance) ->
     gen_listener:start_link(?SERVER, [{'responders', ?RESPONDERS}
                                      ,{'bindings', ?BINDINGS}

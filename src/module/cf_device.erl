@@ -68,7 +68,7 @@ bridge_to_endpoints(Data, Call) ->
             bridge_to_endpoints(Data, Call, Endpoints)
     end.
 
--spec bridge_to_endpoints(kz_json:object(), kapps_call:call(), kz_endpoints:endpoints()) ->
+-spec bridge_to_endpoints(kz_json:object(), kapps_call:call(), kz_endpoint:endpoints()) ->
           cf_api_bridge_return().
 bridge_to_endpoints(Data, Call, [_|_]=Endpoints) ->
     FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, 'undefined'),
