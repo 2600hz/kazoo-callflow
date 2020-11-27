@@ -454,33 +454,36 @@ yas_test_() ->
 
 build_tests(Data) ->
     lists:foldl(fun(TestF, Tests) ->
-                        TestF(Data) ++ Tests
+                        TestF(Data, Tests)
                 end
                ,[]
-               ,[fun validate/1
-                ,fun build_macro_command/1
+               ,[fun validate/2
+                ,fun build_macro_command/2
                 ]
                ).
 
-build_macro_command(DataBin) ->
+build_macro_command(DataBin, Acc) ->
     Data = kz_json:decode(DataBin),
-    M = get_macro(Data, kapps_call:new()),
+
+    AudioMacros = get_macro(Data, kapps_call:new()),
 
     Call = kapps_call:exec([{fun kapps_call:set_call_id/2, <<"call_id">>}
+                           ,{fun kapps_call:set_language/2, <<"en-us">>}
                            ]
                           ,kapps_call:new()
                           ),
-    Queue = kapps_call_command:macros_to_commands(M, Call, <<"group_id">>),
+    Queue = kapps_call_command:macros_to_commands(AudioMacros, Call, <<"group_id">>),
 
-    [{"build macros from callflow data", ?_assert(is_list(M))}
+    [{"build macros from callflow data", ?_assert(is_list(AudioMacros))}
     ,{"build api queue from macros", ?_assert(kz_json:are_json_objects(Queue))}
-    ,{"macros and api queue are same length", ?_assertEqual(length(M), length(Queue))}
+    ,{"macros and api queue are same length", ?_assertEqual(length(AudioMacros), length(Queue))}
+     | Acc
     ].
 
-validate(Data) ->
+validate(Data, Acc) ->
     Validated = kz_json_schema:validate(<<"callflows.audio_macro">>, kz_json:decode(Data)),
     'error' =:= element(1, Validated)
         andalso ?LOG_DEBUG("validated: ~p", [Validated]),
-    [?_assertMatch({'ok', _}, Validated)].
+    [?_assertMatch({'ok', _}, Validated) | Acc].
 
 -endif.
