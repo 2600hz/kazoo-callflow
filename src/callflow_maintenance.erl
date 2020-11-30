@@ -385,8 +385,7 @@ list_account_restrictions(Account) ->
     io:format("\nAccount level classifiers:\n\n"),
     print_call_restrictions(DbNameEncoded, kzs_util:format_account_id(AccountDb)),
     print_users_level_call_restrictions(DbNameEncoded),
-    print_devices_level_call_restrictions(DbNameEncoded),
-    print_trunkstore_call_restrictions(DbNameEncoded).
+    print_devices_level_call_restrictions(DbNameEncoded).
 
 -spec print_call_restrictions(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
 print_call_restrictions(DbName, DocId) ->
@@ -422,20 +421,6 @@ print_devices_level_call_restrictions(DbName) ->
             io:format("\n\nDevice level classifiers:\n"),
             lists:foreach(fun(UserObj) ->
                                   io:format("\nDevice: ~s\n\n", [kz_json:get_value([<<"value">>,<<"name">>],UserObj)]),
-                                  print_call_restrictions(DbName, kz_doc:id(UserObj))
-                          end,
-                          JObj);
-        {'error', E} ->
-            io:format("An error occurred: ~p", [E])
-    end.
-
--spec print_trunkstore_call_restrictions(kz_term:ne_binary()) -> 'ok'.
-print_trunkstore_call_restrictions(DbName) ->
-    case kz_datamgr:get_results(DbName, <<"trunkstore/lookup_user_flags">>) of
-        {'ok', JObj} ->
-            io:format("\n\nTrunkstore classifiers:\n\n"),
-            lists:foreach(fun(UserObj) ->
-                                  io:format("Trunk: ~s@~s\n\n", lists:reverse(kz_json:get_value(<<"key">>,UserObj))),
                                   print_call_restrictions(DbName, kz_doc:id(UserObj))
                           end,
                           JObj);
