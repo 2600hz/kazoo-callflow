@@ -105,7 +105,7 @@ build_device_endpoints(Endpoints, [{MemberId, Member} | Members], Call) ->
     of
         'true' ->
             M = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Member),
-            E = [{MemberId, kz_endpoint:build(MemberId, M, Call)}|Endpoints],
+            E = [{MemberId, kz_endpoint_v4:build(MemberId, M, Call)}|Endpoints],
             build_device_endpoints(E, Members, Call);
         'false' -> build_device_endpoints(Endpoints, Members, Call)
     end.
