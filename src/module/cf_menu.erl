@@ -360,7 +360,7 @@ store_recording(AttachmentName, MediaId, Call) ->
               ,{<<"description">>, Description}
               ],
     'ok' = update_doc(Updates, MediaId, Call),
-    kapps_call_command:b_store(AttachmentName, get_new_attachment_url(AttachmentName, MediaId, Call), Call).
+    kapps_call_command:store_file(<<"/tmp/", AttachmentName/binary>>, get_new_attachment_url(AttachmentName, MediaId, Call), Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
