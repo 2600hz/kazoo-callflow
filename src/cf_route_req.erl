@@ -278,44 +278,38 @@ maybe_device_redirected(Call) ->
 
 -spec maybe_fix_restrictions(kz_term:api_binary(), kapps_call:call()) -> kapps_call:call().
 maybe_fix_restrictions('undefined', Call) -> Call;
-maybe_fix_restrictions(Device, Call) ->
-    case cf_util:endpoint_id_by_sip_username(kapps_call:account_db(Call), Device) of
-        {'ok', EndpointId} -> kapps_call:kvs_store(?RESTRICTED_ENDPOINT_KEY, EndpointId, Call);
-        {'error', 'not_found'} ->
-            Keys = [<<"Authorizing-ID">>],
-            kapps_call:remove_custom_channel_vars(Keys, Call)
-    end.
+maybe_fix_restrictions(EndpointId, Call) ->
+    kapps_call:kvs_store(?RESTRICTED_ENDPOINT_KEY, EndpointId, Call).
 
 -spec get_referred_by(kapps_call:call()) -> kz_term:api_binary().
 get_referred_by(Call) ->
     ReferredBy = kapps_call:custom_channel_var(<<"Referred-By">>, Call),
-    extract_sip_username(ReferredBy).
+    endpoint_from_sip_params(ReferredBy).
 
 -spec get_redirected_by(kapps_call:call()) -> kz_term:api_binary().
 get_redirected_by(Call) ->
     RedirectedBy = kapps_call:custom_channel_var(<<"Redirected-By">>, Call),
-    extract_sip_username(RedirectedBy).
+    endpoint_from_sip_params(RedirectedBy).
 
 -spec is_valid_endpoint(kz_term:api_binary(), kapps_call:call()) -> boolean().
 is_valid_endpoint('undefined', _) -> 'false';
 is_valid_endpoint(Contact, Call) ->
-    ReOptions = [{'capture', [1], 'binary'}],
-    case catch(re:run(Contact, <<".*sip:(.*)@.*">>, ReOptions)) of
-        {'match', [Match]} ->
-            case cf_util:endpoint_id_by_sip_username(kapps_call:account_db(Call), Match) of
+    case endpoint_from_sip_params(Contact) of
+        undefined -> false;
+        EndpointId ->
+            case kz_datamgr:open_cache_doc(kapps_call:account_db(Call), EndpointId) of
                 {'ok', _EndpointId} ->
-                    lager:debug("matched ~p to endpoint ~p", [Match, _EndpointId]),
+                    lager:debug("matched ~p to endpoint ~p", [Contact, _EndpointId]),
                     'true';
                 {'error', 'not_found'} -> 'false'
-            end;
-        _ -> 'false'
+            end
     end.
 
--spec extract_sip_username(kz_term:api_binary()) -> kz_term:api_binary().
-extract_sip_username('undefined') -> 'undefined';
-extract_sip_username(Contact) ->
-    ReOptions = [{'capture', [1], 'binary'}],
-    case catch(re:run(Contact, <<".*sip:(.*)@.*">>, ReOptions)) of
-        {'match', [Match]} -> Match;
-        _ -> 'undefined'
+-spec endpoint_from_sip_params(kz_term:api_ne_binary()) -> kz_term:api_ne_binary().
+endpoint_from_sip_params(undefined) -> undefined;
+endpoint_from_sip_params(Contact) ->
+    case kzsip_uri:uris(Contact) of
+        [#uri{ext_opts=Opts1, opts=Opts2}] ->
+            props:get_value(<<"endpoint_id">>, Opts1 ++ Opts2);
+        _Else -> undefined
     end.

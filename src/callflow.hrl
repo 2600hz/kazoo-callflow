@@ -5,6 +5,7 @@
 -include_lib("kazoo_numbers/include/knm_phone_number.hrl").
 -include_lib("kazoo_call/include/kapps_call_command_types.hrl").
 -include_lib("kazoo_documents/include/kazoo_documents.hrl").
+-include_lib("kazoo_sip/include/kzsip_uri.hrl").
 
 -type cf_exe_response() :: {'stop'} |
                            {'continue'} |
