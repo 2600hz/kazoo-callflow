@@ -298,8 +298,8 @@ is_valid_endpoint(Contact, Call) ->
         undefined -> false;
         EndpointId ->
             case kz_datamgr:open_cache_doc(kapps_call:account_db(Call), EndpointId) of
-                {'ok', _EndpointId} ->
-                    lager:debug("matched ~p to endpoint ~p", [Contact, _EndpointId]),
+                {'ok', _Endpoint} ->
+                    lager:debug("matched ~p to endpoint ~p", [Contact, EndpointId]),
                     'true';
                 {'error', 'not_found'} -> 'false'
             end
