@@ -35,6 +35,9 @@
 -include("callflow.hrl").
 -include_lib("kazoo_stdlib/include/kazoo_json.hrl").
 
+-type after_forward_action() :: 'prompt' | 'save'.
+-type forward_message_action() :: 'append' | 'forward' | 'return'.
+
 -define(KEY_VOICEMAIL, <<"voicemail">>).
 -define(KEY_MAX_MESSAGE_COUNT, <<"max_message_count">>).
 -define(KEY_MAX_MESSAGE_LENGTH, <<"max_message_length">>).
@@ -52,6 +55,16 @@
 -define(MAX_CONFIG_MENU_LOOPS, 3).
 -define(MAX_MESSAGE_MENU_LOOPS, 3).
 -define(DEFAULT_SEEK_DURATION, 10 * ?MILLISECONDS_IN_SECOND).
+
+-define(MSG_KEY_CALLER_ID_NUMBER, <<"caller_id_number">>).
+-define(MSG_KEY_TIMESTAMP, <<"timestamp">>).
+
+-define(PROMPT_DELETED, <<"vm-deleted">>).
+-define(PROMPT_MESSAGE_MENU, <<"vm-message_menu">>).
+-define(PROMPT_MESSAGE_NUMBER, <<"vm-message_number">>).
+-define(PROMPT_RECEIVED, <<"vm-received">>).
+-define(PROMPT_SAVED, <<"vm-saved">>).
+-define(PROMPT_NOT_AVAILABLE, <<"vm-not_available">>).
 
 -define(MAILBOX_DEFAULT_SIZE
        ,kapps_config:get_integer(?CF_CONFIG_CAT
@@ -199,6 +212,7 @@
                  ,transcribe_voicemail = kvm_util:transcribe_default() :: boolean()
                  ,notifications :: kz_term:api_object()
                  ,after_notify_action = 'nothing' :: 'nothing' | 'delete' | 'save'
+                 ,after_forward_action = 'save' :: after_forward_action()
                  ,is_ff_rw_enabled = 'false' :: boolean()
                  ,seek_duration = ?DEFAULT_SEEK_DURATION :: non_neg_integer()
                  ,interdigit_timeout = kapps_call_command:default_interdigit_timeout() :: pos_integer()
@@ -403,19 +417,20 @@ find_mailbox_by_number(BoxNum, Call) ->
         Error -> Error
     end.
 
--spec find_destination_mailbox(mailbox(), kapps_call:call(), kz_term:ne_binary(), non_neg_integer()) -> mailbox().
+-spec find_destination_mailbox(mailbox(), kapps_call:call(), kz_term:ne_binary(), non_neg_integer()) ->
+          {'ok', mailbox()} | {'error', 'not_found'}.
 find_destination_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}, Call, _SrcBoxId, Loop)
   when Loop > MaxLoginAttempts ->
     lager:info("maximum number of invalid attempts to find destination mailbox"),
     _ = kapps_call_command:b_prompt(<<"vm-forward_abort">>, Call),
-    #mailbox{};
+    {'error', 'not_found'};
 find_destination_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}=Box, Call, SrcBoxId, Loop) ->
     case find_mailbox(#mailbox{}, Call, <<"vm-enter_forward_id">>, Loop) of
         {'ok', #mailbox{mailbox_id=SrcBoxId}, NewLoop} ->
             lager:info("source mailbox can't be a destination mailbox"),
             _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
             find_destination_mailbox(Box, Call, SrcBoxId, NewLoop + 1);
-        {'ok', DestBox, _NewLoop} -> DestBox;
+        {'ok', DestBox, _NewLoop} -> {'ok', DestBox};
         {'error', 'not_found'} ->
             %% can't find mailbox, set Loop to max to play abort prompts in above function clause
             find_destination_mailbox(Box, Call, SrcBoxId, MaxLoginAttempts + 1)
@@ -597,7 +612,7 @@ play_greeting(#mailbox{unavailable_media_id='undefined'
     lager:debug("mailbox has no greeting, playing the generic"),
     kapps_call_command:audio_macro([{'prompt', <<"vm-person">>}
                                    ,{'say', Mailbox}
-                                   ,{'prompt', <<"vm-not_available">>}
+                                   ,{'prompt', ?PROMPT_NOT_AVAILABLE}
                                    ], Call);
 play_greeting(#mailbox{unavailable_media_id=MediaId}, Call) ->
     Corrected = kz_media_util:media_path(MediaId, kapps_call:account_id(Call)),
@@ -642,13 +657,13 @@ record_voicemail(AttachmentName, #mailbox{max_message_length=MaxMessageLength
                 {'ok', _Selection} ->
                     _ = cf_exe:update_call(Call, Routines),
                     cf_util:start_task(fun new_message/4, [AttachmentName, Length, Box], Call),
-                    _ = kapps_call_command:prompt(<<"vm-saved">>, Call),
+                    _ = kapps_call_command:prompt(?PROMPT_SAVED, Call),
                     _ = kapps_call_command:prompt(<<"vm-thank_you">>, Call),
                     'ok';
                 {'branch', Flow} ->
                     _ = cf_exe:update_call(Call, Routines),
                     _ = new_message(AttachmentName, Length, Box, Call),
-                    _ = kapps_call_command:prompt(<<"vm-saved">>, Call),
+                    _ = kapps_call_command:prompt(?PROMPT_SAVED, Call),
                     {'branch', Flow}
             end;
         {'error', _R} ->
@@ -883,41 +898,68 @@ message_count_prompts(New, Saved) ->
     ].
 
 %%------------------------------------------------------------------------------
-%% @doc Returns the message audio prompt
+%% @doc Returns the complete message-and-envelope audio prompt.
 %% @end
 %%------------------------------------------------------------------------------
 -spec message_prompt(kz_json:objects(), binary(), non_neg_integer(), mailbox()) ->
           kapps_call_command:audio_macro_prompts().
-message_prompt([H|_]=Messages, Message, Count, #mailbox{timezone=Timezone
-                                                       ,skip_envelope='false'
-                                                       ,keys=Keys
-                                                       ,is_ff_rw_enabled=AllowFfRw
-                                                       }) ->
-    [{'prompt', <<"vm-message_number">>}
-    ,{'say', kz_term:to_binary(Count - length(Messages) + 1), <<"number">>}
-    ,play_prompt(Message, AllowFfRw, Keys)
-    ,{'prompt', <<"vm-received">>}
-    ,{'say',  get_unix_epoch(kz_json:get_integer_value(<<"timestamp">>, H), Timezone), <<"current_date_time">>}
-    ,{'prompt', <<"vm-message_menu">>}
-    ];
-message_prompt(Messages, Message, Count, #mailbox{is_ff_rw_enabled=AllowFfRw
-                                                 ,keys=Keys
-                                                 ,skip_envelope='true'}) ->
+message_prompt([H|_]=Messages, Message, Count, #mailbox{skip_envelope='false'}=Box) ->
+    message_number(Messages, Count) ++ message_content(Message, Box) ++ message_envelope(H, Box) ++ message_menu();
+message_prompt(Messages, Message, Count, #mailbox{skip_envelope='true'}=Box) ->
     lager:debug("mailbox is set to skip playing message envelope"),
-    [{'prompt', <<"vm-message_number">>}
-    ,{'say', kz_term:to_binary(Count - length(Messages) + 1), <<"number">>}
-    ,play_prompt(Message, AllowFfRw, Keys)
-    ,{'prompt', <<"vm-message_menu">>}
-    ].
-
-play_prompt(Message, 'true'=_AllowFfRw, #keys{rewind=RW, fastforward=FF}=_Keys) ->
-    {'play', Message, ?ANY_DIGIT -- [RW, FF]};
-play_prompt(Message, 'false', _Keys) ->
-    {'play', Message}.
+    message_number(Messages, Count) ++ message_content(Message, Box) ++ message_menu().
 
 %%------------------------------------------------------------------------------
-%% @doc Plays back a message then the menu, and continues to loop over the
-%% menu util
+%% @doc Returns the message number audio macro.
+%% @end
+%%------------------------------------------------------------------------------
+-spec message_number(kz_json:objects(), non_neg_integer()) -> kapps_call_command:audio_macro_prompts().
+message_number(Messages, Count) ->
+    [{'prompt', ?PROMPT_MESSAGE_NUMBER}
+    ,{'say', kz_term:to_binary(Count - length(Messages) + 1), <<"number">>}
+    ].
+
+%%------------------------------------------------------------------------------
+%% @doc Returns the message envelope audio macro.
+%% @end
+%%------------------------------------------------------------------------------
+-spec message_envelope(kz_json:object(), mailbox()) -> kapps_call_command:audio_macro_prompts().
+message_envelope(Message, #mailbox{timezone=Timezone}) ->
+    [{'prompt', ?PROMPT_RECEIVED}
+    ,{'say', get_unix_epoch(kz_json:get_integer_value(?MSG_KEY_TIMESTAMP, Message), Timezone), <<"current_date_time">>}
+    ].
+
+%%------------------------------------------------------------------------------
+%% @doc Returns the message content audio macro.
+%% @end
+%%------------------------------------------------------------------------------
+-spec message_content(binary(), mailbox()) -> kapps_call_command:audio_macro_prompts().
+message_content(Message, #mailbox{keys=Keys
+                                 ,is_ff_rw_enabled=AllowFfRw
+                                 }) ->
+    message_content(Message, AllowFfRw, Keys).
+
+%%------------------------------------------------------------------------------
+%% @doc Returns the message content audio macro.
+%% @end
+%%------------------------------------------------------------------------------
+-spec message_content(binary(), boolean(), vm_keys()) -> kapps_call_command:audio_macro_prompts().
+message_content(Message, 'true'=_AllowFfRw, #keys{rewind=RW, fastforward=FF}=_Keys) ->
+    [{'play', Message, ?ANY_DIGIT -- [RW, FF]}];
+message_content(Message, 'false', _Keys) ->
+    [{'play', Message}].
+
+%%------------------------------------------------------------------------------
+%% @doc Returns the message menu audio macro.
+%% @end
+%%------------------------------------------------------------------------------
+-spec message_menu() -> kapps_call_command:audio_macro_prompts().
+message_menu() ->
+    [{'prompt', ?PROMPT_MESSAGE_MENU}].
+
+%%------------------------------------------------------------------------------
+%% @doc Plays a list of messages, handling each message and traversing the list
+%% based on the user's menu choices.
 %% @end
 %%------------------------------------------------------------------------------
 -spec play_messages(kz_json:objects(), non_neg_integer(), mailbox(), kapps_call:call()) ->
@@ -928,26 +970,49 @@ play_messages(Messages, Count, #mailbox{oldest_message_first='true'}=Box, Call) 
 play_messages(Messages, Count, Box, Call) ->
     play_messages(Messages, [], Count, Box, Call).
 
+%%------------------------------------------------------------------------------
+%% @doc Plays the current message and the menu, then handles the message and
+%% continues traversing the message list based on the user's menu choice.
+%% @end
+%%------------------------------------------------------------------------------
 -spec play_messages(kz_json:objects(), kz_json:objects(), non_neg_integer(), mailbox(), kapps_call:call()) ->
           'ok' | 'complete'.
-play_messages([CurrentMessage|NextMessages]=Messages
+play_messages([CurrentMessage|_]=Messages
              ,PrevMessages
              ,Count
-             ,#mailbox{seek_duration=SeekDuration
-                      ,mailbox_id=BoxId
-                      }=Box
+             ,Box
              ,Call
              ) ->
     AccountId = kapps_call:account_id(Call),
     Message = kvm_message:media_url(AccountId, CurrentMessage),
     lager:info("playing mailbox message ~p (~s)", [Count, Message]),
     Prompt = message_prompt(Messages, Message, Count, Box),
-    case message_menu(Prompt, Box, Call) of
+    play_message_menu(Prompt, Messages, PrevMessages, Count, Box, Call);
+play_messages([], _, _, _, _) ->
+    lager:info("all messages in folder played to caller"),
+    'complete'.
+
+%%------------------------------------------------------------------------------
+%% @doc Plays the message menu prompt and handles the user's choice.
+%% @end
+%%------------------------------------------------------------------------------
+-spec play_message_menu(kapps_call_command:audio_macro_prompts(), kz_json:objects(), kz_json:objects(), non_neg_integer(), mailbox(), kapps_call:call()) ->
+          'ok' | 'complete'.
+play_message_menu(Prompt
+                 ,[CurrentMessage|NextMessages]=Messages
+                 ,PrevMessages
+                 ,Count
+                 ,#mailbox{seek_duration=SeekDuration
+                          ,mailbox_id=BoxId
+                          }=Box
+                 ,Call
+                 ) ->
+    AccountId = kapps_call:account_id(Call),
+    case play_message_menu(Prompt, Box, Call) of
         {'ok', 'keep'} ->
             lager:info("caller chose to save the message"),
             _ = kapps_call_command:flush(Call),
-            _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
-            {_, SavedMessage} = kvm_message:set_folder(?VM_FOLDER_SAVED, CurrentMessage, AccountId),
+            {_, SavedMessage} = save_message(CurrentMessage, AccountId, Call),
             play_messages(NextMessages, [SavedMessage|PrevMessages], Count, Box, Call);
         {'ok', 'prev'} ->
             lager:info("caller chose to listen to previous message"),
@@ -960,17 +1025,12 @@ play_messages([CurrentMessage|NextMessages]=Messages
         {'ok', 'delete'} ->
             lager:info("caller chose to delete the message"),
             _ = kapps_call_command:flush(Call),
-            _ = kapps_call_command:b_prompt(<<"vm-deleted">>, Call),
-            MessageId = kzd_vm_message_metadata:media_id(CurrentMessage),
-            JObj = hd(kz_json:get_list_value(<<"succeeded">>, kvm_messages:fetch(AccountId, [MessageId], BoxId))),
-            kvm_util:publish_voicemail_deleted(BoxId, JObj, 'dtmf'),
-            _ = kvm_message:set_folder({?VM_FOLDER_DELETED, 'false'}, CurrentMessage, AccountId),
+            _ = delete_message(CurrentMessage, AccountId, BoxId, Call),
             play_messages(NextMessages, PrevMessages, Count, Box, Call);
         {'ok', 'return'} ->
             lager:info("caller chose to return to the main menu"),
             _ = kapps_call_command:flush(Call),
-            _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
-            _ = kvm_message:set_folder(?VM_FOLDER_SAVED, CurrentMessage, AccountId),
+            _ = save_message(CurrentMessage, AccountId, Call),
             'complete';
         {'ok', 'replay'} ->
             lager:info("caller chose to replay"),
@@ -979,10 +1039,7 @@ play_messages([CurrentMessage|NextMessages]=Messages
         {'ok', 'forward'} ->
             lager:info("caller chose to forward the message"),
             _ = kapps_call_command:flush(Call),
-            forward_message(CurrentMessage, Box, Call),
-            {_, SavedMessage} = kvm_message:set_folder(?VM_FOLDER_SAVED, CurrentMessage, AccountId),
-            _ = kapps_call_command:prompt(<<"vm-saved">>, Call),
-            play_messages(NextMessages, [SavedMessage|PrevMessages], Count, Box, Call);
+            forward_message(Messages, PrevMessages, Count, Box, Call);
         {'ok', 'rewind'} ->
             lager:info("caller chose to rewind part of the message"),
             _ = kapps_call_command:seek('rewind', SeekDuration, Call),
@@ -994,12 +1051,11 @@ play_messages([CurrentMessage|NextMessages]=Messages
         {'ok', 'callback'} ->
             maybe_handle_vm_callback(CurrentMessage, Messages, PrevMessages, Count, Box, Call);
         {'error', _} ->
+            lager:info("error during message playback"),
             _ = kapps_call_command:flush(Call),
-            lager:info("error during message playback")
-    end;
-play_messages([], _, _, _, _) ->
-    lager:info("all messages in folder played to caller"),
-    'complete'.
+            _ = save_message(CurrentMessage, AccountId, Call),
+            'ok'
+    end.
 
 maybe_handle_vm_callback(CurrentMessage, Messages, PrevMessages, Count, Box, Call) ->
     case ?SHOULD_DISABLE_CALLBACK of
@@ -1023,7 +1079,7 @@ handle_vm_callback(Messages, PrevMessages, Count, Box, Call, CallerIdNumber) ->
     end.
 
 callback_not_available(Messages, PrevMessages, Count, Box, Call) ->
-    _ = kapps_call_command:audio_macro([{'prompt', <<"vm-not_available">>}], Call),
+    _ = kapps_call_command:audio_macro([{'prompt', ?PROMPT_NOT_AVAILABLE}], Call),
     play_messages(Messages, PrevMessages, Count, Box, Call).
 
 -spec maybe_branch_call(mailbox(), kapps_call:call(), kz_term:ne_binary()) ->
@@ -1126,39 +1182,70 @@ play_prev_message(Messages, [H|T], Count, Box, Call) ->
     play_messages([H|Messages], T, Count, Box, Call).
 
 %%------------------------------------------------------------------------------
-%% @doc Main function for forwarding a message to another vmbox of this account
+%% @doc Main function for forwarding a message to another vmbox of this account.
 %% @end
 %%------------------------------------------------------------------------------
--spec forward_message(kz_json:object(), mailbox(), kapps_call:call()) -> 'ok'.
-forward_message(Message, #mailbox{mailbox_id=SrcBoxId} = SrcBox, Call) ->
+-spec forward_message(kz_json:objects(), kz_json:objects(), non_neg_integer(), mailbox(), kapps_call:call()) ->
+          'ok' | 'complete'.
+forward_message([CurrentMessage|NextMessages]=Messages, PrevMessages, Count, Box, Call) ->
+    AccountId = kapps_call:account_id(Call),
+    case maybe_forward_message(CurrentMessage, Box, Call) of
+        'prompt' ->
+            play_message_menu(message_menu(), Messages, PrevMessages, Count, Box, Call);
+        'save' ->
+            {_, SavedMessage} = save_message(CurrentMessage, AccountId, Call),
+            play_messages(NextMessages, [SavedMessage|PrevMessages], Count, Box, Call)
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Forwards the current message if the user enters a valid vmbox number.
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_forward_message(kz_json:object(), mailbox(), kapps_call:call()) -> after_forward_action().
+maybe_forward_message(Message, #mailbox{mailbox_id=SrcBoxId}=SrcBox, Call) ->
     lager:info("enter destination mailbox number"),
     _ = kapps_call_command:b_flush(Call),
-    PossibleBox = find_destination_mailbox(#mailbox{}, Call, SrcBoxId, 1),
-    forward_message(Message, SrcBox, PossibleBox, Call).
+    case find_destination_mailbox(#mailbox{}, Call, SrcBoxId, 1) of
+        {'ok', DestBox} ->
+            forward_message(Message, SrcBox, DestBox, Call);
+        _ ->
+            %% The user didn't enter a valid destination mailbox within the retry limit.
+            lager:info("message not forwarded, returning to message menu..."),
+            'prompt'
+    end.
 
--spec forward_message(kz_json:object(), mailbox(), mailbox(), kapps_call:call()) -> 'ok'.
-forward_message(_Message, _SrcBox, #mailbox{exists='false'}, _Call) ->
-    lager:info("unable to find destination mailbox, returning to message menu...");
-forward_message(Message, #mailbox{mailbox_id = SrcBoxId
-                                 ,forward_type = ForwardType
+%%------------------------------------------------------------------------------
+%% @doc Forwards a message, optionally allowing the user to prepend a message.
+%% @end
+%%------------------------------------------------------------------------------
+-spec forward_message(kz_json:object(), mailbox(), mailbox(), kapps_call:call()) -> after_forward_action().
+forward_message(Message, #mailbox{mailbox_id=SrcBoxId
+                                 ,after_forward_action=AfterForwardAction
+                                 ,forward_type=ForwardType
                                  }, DestBox, Call) ->
     case ForwardType =:= <<"prepend_forward">>
         andalso forward_message_menu(DestBox, Call)
     of
         'false' ->
-            forward_message('undefined', 0, Message, SrcBoxId, DestBox, Call);
-        {'ok', 'return'} -> 'ok';
+            forward_message('undefined', 0, Message, SrcBoxId, DestBox, Call),
+            AfterForwardAction;
+        {'ok', 'return'} ->
+            'prompt'; %% The user decided not to forward, so prompt again.
         {'ok', 'append'} ->
-            compose_forward_message(Message, SrcBoxId, DestBox, Call);
+            compose_forward_message(Message, SrcBoxId, DestBox, Call),
+            AfterForwardAction;
         {'ok', 'forward'} ->
-            forward_message('undefined', 0, Message, SrcBoxId, DestBox, Call);
+            forward_message('undefined', 0, Message, SrcBoxId, DestBox, Call),
+            AfterForwardAction;
         {'error', _R} ->
-            lager:info("error during forward message playback: ~p", [_R])
+            %% The error has already been handled, but the call may now be disconnected.
+            lager:error("error during forward message menu: ~p", [_R]),
+            'save'
     end.
 
 -spec forward_message_menu(mailbox(), kapps_call:call()) ->
           {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
-          {'ok', 'append' | 'forward' | 'return'}.
+          {'ok', forward_message_action()}.
 forward_message_menu(#mailbox{interdigit_timeout=Interdigit}=DestBox, Call) ->
     lager:info("playing forward message menu"),
 
@@ -1277,35 +1364,58 @@ forward_message_task(AttachmentName, Length, Message, SrcBoxId, #mailbox{mailbox
     end.
 
 %%------------------------------------------------------------------------------
+%% @doc Handles a user request to save a message.
+%% @end
+%%------------------------------------------------------------------------------
+-spec save_message(kz_json:object(), kz_term:api_binary(), kapps_call:call()) -> kvm_message:db_ret().
+save_message(Message, AccountId, Call) ->
+    _ = kapps_call_command:b_prompt(?PROMPT_SAVED, Call),
+    kvm_message:set_folder(?VM_FOLDER_SAVED, Message, AccountId).
+
+%%------------------------------------------------------------------------------
+%% @doc Handles a user request to delete a message.
+%% @end
+%%------------------------------------------------------------------------------
+-spec delete_message(kz_json:object(), kz_term:api_binary(), kz_term:api_ne_binary(), kapps_call:call()) -> kvm_message:db_ret().
+delete_message(Message, AccountId, BoxId, Call) ->
+    _ = kapps_call_command:b_prompt(?PROMPT_DELETED, Call),
+    MessageId = kz_json:get_ne_binary_value(<<"media_id">>, Message),
+    JObj = hd(kz_json:get_list_value(<<"succeeded">>, kvm_messages:fetch(AccountId, [MessageId], BoxId))),
+    kvm_util:publish_voicemail_deleted(BoxId, JObj, 'dtmf'),
+    kvm_message:set_folder({?VM_FOLDER_DELETED, 'false'}, Message, AccountId).
+
+%%------------------------------------------------------------------------------
 %% @doc Loops over the message menu after the first play back until the
-%% user provides a valid option or more than `?MAX_MESSAGE_MENU_LOOPS' retries happen.
+%% user provides a valid option
 %% @end
 %%------------------------------------------------------------------------------
 -type message_menu_returns() :: {'ok', 'keep' | 'delete' | 'return' | 'replay' | 'prev' | 'next' | 'forward' | 'rewind' | 'fastforward' | 'callback'} |
                                 {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()}.
 
--spec message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call()) ->
+-spec play_message_menu(mailbox(), kapps_call:call()) ->
+          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
           message_menu_returns().
-message_menu(Prompt, Box, Call) ->
-    message_menu(Prompt, Box, Call, 1).
+play_message_menu(Box, Call) ->
+    play_message_menu(message_menu(), Box, Call).
 
--spec message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call(), pos_integer()) ->
+-spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call()) ->
+          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
           message_menu_returns().
-message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
-                                        ,keep=Keep
-                                        ,forward=Forward
-                                        ,delete=Delete
-                                        ,prev=Prev
-                                        ,next=Next
-                                        ,return_main=ReturnMain
-                                        ,rewind=RW
-                                        ,fastforward=FF
-                                        ,callback=Callback
-                                        }
-                             ,is_ff_rw_enabled=AllowFfRw
-                             ,interdigit_timeout=Interdigit
-                             }=Box, Call, RetryLoop) when RetryLoop =< ?MAX_MESSAGE_MENU_LOOPS ->
-    lager:info("playing message menu, try ~p/~p", [RetryLoop, ?MAX_MESSAGE_MENU_LOOPS]),
+play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
+                                             ,keep=Keep
+                                             ,forward=Forward
+                                             ,delete=Delete
+                                             ,prev=Prev
+                                             ,next=Next
+                                             ,return_main=ReturnMain
+                                             ,rewind=RW
+                                             ,fastforward=FF
+                                             ,callback=Callback
+                                             }
+                                  ,is_ff_rw_enabled=AllowFfRw
+                                  ,interdigit_timeout=Interdigit
+                                  }=Box, Call) ->
+    lager:info("playing message menu"),
     NoopId = kapps_call_command:audio_macro(Prompt, Call),
 
     case kapps_call_command:collect_digits(?KEY_LENGTH
@@ -1330,12 +1440,8 @@ message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
         {'error', _}=E -> E;
         _ ->
             _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
-            message_menu([{'prompt', <<"vm-message_menu">>}], Box, Call, RetryLoop+1)
-    end;
-message_menu(_Prompt, _Box, Call, RetryLoop) when RetryLoop > ?MAX_MESSAGE_MENU_LOOPS ->
-    lager:debug("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
-    _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
-    {'error', 'channel_hungup'}.
+            play_message_menu(Box, Call)
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -1462,7 +1568,7 @@ handle_config_selection(#mailbox{keys=#keys{toggle_announcement_mode=Selection}}
             lager:debug("toggling announcement_only failed: ~p", [_E]),
             config_menu(Box, Call);
         #mailbox{}=Box1 ->
-            _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
+            _ = kapps_call_command:b_prompt(?PROMPT_SAVED, Call),
             config_menu(Box1, Call)
     end;
 %% Bulk delete -> delete all voicemails
@@ -1560,11 +1666,11 @@ overwrite_temporary_unavailable_greeting(AttachmentName
                     _ = store_recording(AttachmentName, Length, MediaId, Box, Call),
                     'ok' = update_doc([<<"media">>, <<"temporary_unavailable">>], MediaId, Box, Call),
                     maybe_update_recording_media_doc(AttachmentName, Box, Call, MediaId, UpdateOrNew),
-                    _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
+                    _ = kapps_call_command:b_prompt(?PROMPT_SAVED, Call),
                     Box;
                 {'ok', 'no_selection'} ->
                     lager:info("selected item: no selection"),
-                    _ = kapps_call_command:b_prompt(<<"vm-deleted">>, Call),
+                    _ = kapps_call_command:b_prompt(?PROMPT_DELETED, Call),
                     'ok';
                 {'branch', _}=B -> B
             end;
@@ -1582,7 +1688,7 @@ delete_temporary_unavailable_greeting(#mailbox{temporary_unavailable_media_id='u
     Box;
 delete_temporary_unavailable_greeting(Box, Call) ->
     'ok' = update_doc([<<"media">>, <<"temporary_unavailable">>], 'null', Box, Call),
-    _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
+    _ = kapps_call_command:b_prompt(?PROMPT_SAVED, Call),
     Box#mailbox{temporary_unavailable_media_id='undefined'}.
 
 -spec record_unavailable_greeting(kz_term:ne_binary(), mailbox(), kapps_call:call()) ->
@@ -1634,10 +1740,10 @@ overwrite_unavailable_greeting(AttachmentName, #mailbox{unavailable_media_id=Med
                     _ = store_recording(AttachmentName, Length, MediaId, Box, Call),
                     'ok' = update_doc([<<"media">>, <<"unavailable">>], MediaId, Box, Call),
                     maybe_update_recording_media_doc(AttachmentName, Box, Call, JObjOrID, UpdateOrNew),
-                    _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
+                    _ = kapps_call_command:b_prompt(?PROMPT_SAVED, Call),
                     Box;
                 {'ok', 'no_selection'} ->
-                    _ = kapps_call_command:b_prompt(<<"vm-deleted">>, Call),
+                    _ = kapps_call_command:b_prompt(?PROMPT_DELETED, Call),
                     'ok';
                 {'branch', _}=B -> B
             end;
@@ -1699,10 +1805,10 @@ record_name(AttachmentName, #mailbox{name_media_id=MediaId
                     _ = store_recording(AttachmentName, Length, MediaId, Box, Call),
                     'ok' = update_doc(?RECORDED_NAME_KEY, MediaId, DocId, Call),
                     maybe_update_recording_media_doc(AttachmentName, Box, Call, MediaId, UpdateOrNew),
-                    _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
+                    _ = kapps_call_command:b_prompt(?PROMPT_SAVED, Call),
                     Box;
                 {'ok', 'no_selection'} ->
-                    _ = kapps_call_command:b_prompt(<<"vm-deleted">>, Call),
+                    _ = kapps_call_command:b_prompt(?PROMPT_DELETED, Call),
                     'ok';
                 {'branch', _}=B -> B
             end;
@@ -1885,6 +1991,7 @@ get_mailbox_profile(Data, Call) ->
 
             SeekDuration = seek_duration(MailboxJObj),
             AfterNotifyAction = after_notify_action(MailboxJObj),
+            AfterForwardAction = after_forward_action(MailboxJObj),
             IsFfRwEnabled = is_ff_rw_enabled(MailboxJObj),
 
             #mailbox{mailbox_id = MailboxId
@@ -1928,6 +2035,7 @@ get_mailbox_profile(Data, Call) ->
                     ,notifications =
                          kz_json:get_json_value(<<"notifications">>, MailboxJObj)
                     ,after_notify_action = AfterNotifyAction
+                    ,after_forward_action = AfterForwardAction
                     ,is_ff_rw_enabled = IsFfRwEnabled
                     ,seek_duration = SeekDuration
                     ,interdigit_timeout =
@@ -1977,6 +2085,17 @@ after_notify_action(MailboxJObj) ->
         {'false', 'true'}  -> 'save';
         {'true', 'false'}  -> 'delete';
         {'true', 'true'}   -> 'save'
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Returns the after_forward_action() value for a mailbox.
+%% @end
+%%------------------------------------------------------------------------------
+-spec after_forward_action(kz_json:object()) -> after_forward_action().
+after_forward_action(MailboxJObj) ->
+    case kzd_vmboxes:after_forward_action(MailboxJObj) of
+        <<"prompt">> -> 'prompt';
+        <<"save">> -> 'save'
     end.
 
 -spec max_message_count(kapps_call:call()) -> non_neg_integer().
