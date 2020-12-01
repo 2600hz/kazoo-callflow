@@ -205,7 +205,7 @@ start_builder(EndpointId, Member, Call) ->
 builder(EndpointId, Member, Call, Parent) ->
     kz_log:put_callid(kapps_call:call_id(Call)),
     lager:debug("attempting to build endpoint ~s", [EndpointId]),
-    Parent ! {self(), EndpointId, kz_endpoint_v4:build(EndpointId, Member, Call)}.
+    Parent ! {self(), EndpointId, kz_endpoint:build(EndpointId, Member, Call)}.
 
 -spec is_member_active(kz_json:object()) -> boolean().
 is_member_active(Member) ->

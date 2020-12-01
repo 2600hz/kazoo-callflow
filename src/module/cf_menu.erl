@@ -281,7 +281,7 @@ record_greeting(AttachmentName, #cf_menu_data{greeting_id=MediaId}=Menu, Call) -
                     _ = kapps_call_command:b_prompt(<<"vm-recording_to_short">>, Call),
                     record_greeting(tmp_file(), Menu, Call);
                 {'ok', 'save'} ->
-                    {'ok', _} = store_recording(AttachmentName, MediaId, Call),
+                    'ok' = store_recording(AttachmentName, MediaId, Call),
                     'ok' = update_doc([<<"media">>, <<"greeting">>], MediaId, Menu, Call),
                     _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
                     {'ok', Menu};
@@ -360,7 +360,7 @@ store_recording(AttachmentName, MediaId, Call) ->
               ,{<<"description">>, Description}
               ],
     'ok' = update_doc(Updates, MediaId, Call),
-    kapps_call_command:b_store(AttachmentName, get_new_attachment_url(AttachmentName, MediaId, Call), Call).
+    kapps_call_command:store_file(<<"/tmp/", AttachmentName/binary>>, get_new_attachment_url(AttachmentName, MediaId, Call), Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
