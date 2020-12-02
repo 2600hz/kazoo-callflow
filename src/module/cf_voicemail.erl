@@ -1340,7 +1340,7 @@ config_menu(#mailbox{interdigit_timeout=Interdigit}=Box
            ,Loop
            ) when Loop =< ?MAX_CONFIG_MENU_LOOPS ->
     lager:info("playing mailbox configuration menu, try ~p", [Loop]),
-    {'ok', _} = kapps_call_command:b_flush(Call),
+    _ = kapps_call_command:b_flush(Call),
     Prompt = config_prompt(Box),
     NoopId = kapps_call_command:prompt(Prompt, Call),
 
