@@ -1,6 +1,6 @@
 %%%-----------------------------------------------------------------------------
 %%% @copyright (C) 2011-2020, 2600Hz
-%%% @doc Callflow action to branch the call to a callflow defined in the module data.
+%%% @doc Callflow action to branch the call to a callflow defined in the modules data arguments.
 %%%
 %%% <h4>Data options:</h4>
 %%% <dl>
@@ -8,7 +8,7 @@
 %%%   <dd>`object()', The flow to execute.</dd>
 %%% </dl>
 %%%
-%%% @author Karl Anderson
+%%% @author Nick Reed
 %%%
 %%% This Source Code Form is subject to the terms of the Mozilla Public
 %%% License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -22,8 +22,7 @@
 
 -include("callflow.hrl").
 
--export([handle/2
-        ]).
+-export([handle/2]).
 
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module
@@ -36,6 +35,6 @@ handle(Data, Call) ->
             lager:info("could not branch to flow with config: ~p", [Data]),
             cf_exe:continue(Call);
         Flow ->
-            lager:info("branching to flow ~p", [Data]),
+            lager:info("branching to custom flow"),
             cf_exe:branch(Flow, Call)
     end.
