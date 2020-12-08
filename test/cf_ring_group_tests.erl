@@ -51,10 +51,10 @@ help_10392() ->
     Endpoint = help_10392_rg_member(<<"user">>, ?HELP_10392_USER_ID),
     User = kz_json:set_value(<<"delay">>, 0, Endpoint),
     Group = help_10392_rg_member(<<"group">>, ?HELP_10392_GROUP_ID),
-    EndpointDelay10 = {?HELP_10392_DEVICE_ID
+    EndpointDelay10 = {?HELP_10392_USER_ID
                       ,help_10392_add_source(help_10392_add_group_weight(Endpoint))
                       },
-    EndpointDelay0 = {?HELP_10392_DEVICE_ID, help_10392_add_source(User)},
+    EndpointDelay0 = {?HELP_10392_USER_ID, help_10392_add_source(User)},
 
     Call = kapps_call:set_account_id(?HELP_10392_ACCOUNT_ID, kapps_call:new()),
 
@@ -87,7 +87,7 @@ get_endpoints() ->
     MemberGroup0 = kz_json:set_value(<<"delay">>, 0, MemberGroup10),
 
     %% Build and Endpoint with delay = 0.
-    {'ok', [ExpectedDelay0]} = kz_endpoint:build(?HELP_10392_DEVICE_ID, MemberGroup0, Call),
+    {'ok', [ExpectedDelay0]} = kz_endpoint:build(?HELP_10392_USER_ID, MemberGroup0, Call),
     ExpectedDelay10 = kz_json:set_value(<<"Endpoint-Delay">>, <<"10">>, ExpectedDelay0),
 
     Expected = [ExpectedDelay0, ExpectedDelay10],
@@ -144,7 +144,7 @@ get_endpoints_in_order() ->
     MemberGroup0 = kz_json:set_value(<<"delay">>, 0, MemberGroup10),
 
     %% Build and Endpoint with delay = 0.
-    {'ok', [ExpectedDelay0]} = kz_endpoint:build(?HELP_10392_DEVICE_ID, MemberGroup0, Call),
+    {'ok', [ExpectedDelay0]} = kz_endpoint:build(?HELP_10392_USER_ID, MemberGroup0, Call),
     ExpectedDelay10 = kz_json:set_value(<<"Endpoint-Delay">>, <<"10">>, ExpectedDelay0),
 
     Expected0 = [ExpectedDelay0, ExpectedDelay10],
