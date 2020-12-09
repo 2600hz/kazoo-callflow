@@ -11,6 +11,8 @@
 %%%-----------------------------------------------------------------------------
 -module(cf_ring_group_tests).
 
+-export([help_10392_call/0]).
+
 -include_lib("eunit/include/eunit.hrl").
 
 -define(HELP_10392_ACCOUNT_ID, <<"account0000000000000000000000001">>).
@@ -37,24 +39,46 @@ weighted_random_sort_test_() ->
 %% HELP-260010392
 help_10392_test_() ->
     {'setup'
-    ,fun() -> kz_fixturedb_util:start_me('true') end
-    ,fun kz_fixturedb_util:stop_me/1
+    ,fun() ->
+             mock_help_10392_them_all(),
+             kz_fixturedb_util:start_me('true')
+     end
+    ,fun (LinkPid) ->
+             _ = kz_fixturedb_util:stop_me(LinkPid),
+             meck:unload()
+     end
     ,fun(_ReturnOfSetup) ->
              [{"HELP-10392: Resolve RG endpoints' in order", help_10392()}
              ,{"HELP-10392: Sort endpoints by delay (Ring strategy=simultaneous (at the same time))", get_endpoints()}
              ,{"Ring strategy=single (in order)", get_endpoints_in_order()}
+             ,{"Validating mocked functions", validate_help_10392_mocks()}
              ]
      end
     }.
+
+mock_help_10392_them_all() ->
+    meck:new('kz_endpoint', ['unstick', 'passthrough']),
+    meck:expect('kz_endpoint', 'build', kz_endpoint_build()).
+
+kz_endpoint_build() ->
+    fun(EndpointId, Member, Call) -> kz_endpoint_v5:build(EndpointId, Member, Call) end.
+
+validate_help_10392_mocks() ->
+    [{"Validating mocked " ++ kz_term:to_list(Mocked)
+     ,?_assertEqual('true', meck:validate(Mocked))
+     }
+     || Mocked <- ['kz_endpoint'
+                  ]
+    ].
 
 help_10392() ->
     Endpoint = help_10392_rg_member(<<"user">>, ?HELP_10392_USER_ID),
     User = kz_json:set_value(<<"delay">>, 0, Endpoint),
     Group = help_10392_rg_member(<<"group">>, ?HELP_10392_GROUP_ID),
-    EndpointDelay10 = {?HELP_10392_DEVICE_ID
+    EndpointDelay10 = {?HELP_10392_USER_ID
                       ,help_10392_add_source(help_10392_add_group_weight(Endpoint))
                       },
-    EndpointDelay0 = {?HELP_10392_DEVICE_ID, help_10392_add_source(User)},
+    EndpointDelay0 = {?HELP_10392_USER_ID, help_10392_add_source(User)},
 
     Call = kapps_call:set_account_id(?HELP_10392_ACCOUNT_ID, kapps_call:new()),
 
@@ -87,7 +111,7 @@ get_endpoints() ->
     MemberGroup0 = kz_json:set_value(<<"delay">>, 0, MemberGroup10),
 
     %% Build and Endpoint with delay = 0.
-    {'ok', [ExpectedDelay0]} = kz_endpoint:build(?HELP_10392_DEVICE_ID, MemberGroup0, Call),
+    {'ok', [ExpectedDelay0]} = kz_endpoint_v5:build(?HELP_10392_USER_ID, MemberGroup0, Call),
     ExpectedDelay10 = kz_json:set_value(<<"Endpoint-Delay">>, <<"10">>, ExpectedDelay0),
 
     Expected = [ExpectedDelay0, ExpectedDelay10],
@@ -144,7 +168,7 @@ get_endpoints_in_order() ->
     MemberGroup0 = kz_json:set_value(<<"delay">>, 0, MemberGroup10),
 
     %% Build and Endpoint with delay = 0.
-    {'ok', [ExpectedDelay0]} = kz_endpoint:build(?HELP_10392_DEVICE_ID, MemberGroup0, Call),
+    {'ok', [ExpectedDelay0]} = kz_endpoint_v5:build(?HELP_10392_USER_ID, MemberGroup0, Call),
     ExpectedDelay10 = kz_json:set_value(<<"Endpoint-Delay">>, <<"10">>, ExpectedDelay0),
 
     Expected0 = [ExpectedDelay0, ExpectedDelay10],

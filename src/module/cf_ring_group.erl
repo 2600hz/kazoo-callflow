@@ -230,8 +230,7 @@ resolve_endpoint_ids(Data, Call, Members) ->
     lager:debug("resolved members into endpoints"),
 
     FilteredEndpoints = [{Weight, {Id, kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Member)}}
-                         || {Type, Id, _Delay, _Timeout, Weight, Member} <- ResolvedEndpoints,
-                            Type =:= <<"device">>,
+                         || {_Type, Id, _Delay, _Timeout, Weight, Member} <- ResolvedEndpoints,
                             Id =/= kapps_call:authorizing_id(Call)
                         ],
     lager:debug("filtered out non-devices: ~p", [FilteredMembers]),
@@ -288,29 +287,12 @@ resolve_endpoint_id(Member, EndpointIds, Data, Call) ->
             Ids = resolve_endpoint_ids(GroupMembers, EndpointIds, Data, Call),
             [{Type, Id, Delay, Timeout, 'undefined'}|Ids];
         <<"user">> ->
-            lager:info("member ~s is a user, get all the user's endpoints", [Id]),
-            get_user_endpoint_ids(Member, EndpointIds, Id, Weight, Call);
+            lager:info("resolved user ~s", [Id]),
+            [{Type, Id, Delay, Timeout, Weight, Member}|EndpointIds];
         <<"device">> ->
             lager:info("resolved device ~s", [Id]),
             [{Type, Id, Delay, Timeout, Weight, Member}|EndpointIds]
     end.
-
--spec get_user_endpoint_ids(kz_json:object(), endpoint_intermediates(), kz_term:ne_binary(), group_weight(), kapps_call:call()) ->
-          endpoint_intermediates().
-get_user_endpoint_ids(Member, EndpointIds, Id, GroupWeight, Call) ->
-    Delay = get_member_delay(Member),
-    Timeout = get_member_timeout(Member),
-    lists:foldr(fun(EndpointId, Acc) ->
-                        case is_endpoint_resolved(EndpointId, Delay, Timeout, Acc) of
-                            'true' -> Acc;
-                            'false' ->
-                                lager:info("resolved user ~s device ~s", [Id, EndpointId]),
-                                [{<<"device">>, EndpointId, Delay, Timeout, GroupWeight, Member} | Acc]
-                        end
-                end
-               ,[{<<"user">>, Id, Delay, Timeout, 'undefined'} | EndpointIds]
-               ,kz_attributes:owned_by(Id, <<"device">>, Call)
-               ).
 
 -spec get_group_members(kz_json:object(), kz_term:ne_binary(), group_weight(), kz_json:object(), kapps_call:call()) -> kz_json:objects().
 get_group_members(Member, Id, GroupWeight, Data, Call) ->
