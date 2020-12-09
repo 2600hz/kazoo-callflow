@@ -24,17 +24,6 @@
 
 -export([handle/2]).
 
-%% TODO: before merging either move to callflow.hrl or merge the fixes to branch_variable first (which does this) and remove me!
--define(ALLOWED_BRANCH_DOC_TYPES, kapps_config:get_ne_binaries(?CF_CONFIG_CAT
-                                                              ,<<"allowed_branch_doc_types">>
-                                                              ,[<<"user">>
-                                                               ,<<"device">>
-                                                               ,<<"location">>
-                                                               ,<<"group">>
-                                                               ]
-                                                              )
-       ).
-
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module
 %% @end

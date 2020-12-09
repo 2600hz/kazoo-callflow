@@ -40,6 +40,16 @@
 
 -define(NO_MATCH_CF, <<"no_match">>).
 
+-define(ALLOWED_BRANCH_DOC_TYPES, kapps_config:get_ne_binaries(?CF_CONFIG_CAT
+                                                              ,<<"allowed_branch_doc_types">>
+                                                              ,[<<"user">>
+                                                               ,<<"device">>
+                                                               ,<<"location">>
+                                                               ,<<"group">>
+                                                               ]
+                                                              )
+       ).
+
 -define(DEFAULT_TIMEOUT_S, ?BRIDGE_DEFAULT_SYSTEM_TIMEOUT_S).
 
 -define(MANUAL_PRESENCE_DOC, <<"manual_presence">>).
