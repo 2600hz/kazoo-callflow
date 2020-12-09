@@ -2,6 +2,45 @@
 
 ### About Callflow Inline
 
+The `callflow_inline` module is best used as a "fallback" module where you want the flow to return to a specific point after executing one flow chain (usually audio or temporal routes) without having to perpetually chain `children._.children._...`.  `callflow_inline` works exactly the same as the `callflow` module, but simply replaces `data.id` with an inline flow at `data.flow`. 
+
+
+### Usage / Example  
+
+> Important: when a call is answered, the flow will stop and NOT "fallback")  
+
+Example: 
+```
+{
+  module: "callflow_inline",
+  data: {
+    flow: {
+      module: 'tts',
+      data: {
+        text: "This is said FIRST"
+      },
+      children: {
+        _: {
+          module: 'tts',
+          data: {
+            text: "This is said SECOND"
+          }
+        }
+      }
+    }
+  },
+  children: {
+    _: {
+      module: 'tts',
+      data: {
+        text: "This is said LAST"
+      }
+    }
+  }
+}
+```
+
+
 #### Schema
 
 Validator for the callflow_inline callflow data object
