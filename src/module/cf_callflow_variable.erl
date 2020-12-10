@@ -5,11 +5,11 @@
 %%% <h4>Data options:</h4>
 %%% <dl>
 %%%   <dt>`id'</dt>
-%%%   <dd>`binary()', The flow to execute.</dd>
+%%%   <dd>`binary()', ID of a Document.</dd>
 %%% </dl>
 %%% <dl>
 %%%   <dt>`variable'</dt>
-%%%   <dd>`binary()|list()', The flow to execute.</dd>
+%%%   <dd>`binary()|list()', Path of key in Document, used for Callflow ID to branch to</dd>
 %%% </dl>
 %%%
 %%% @author Sean Wysor
