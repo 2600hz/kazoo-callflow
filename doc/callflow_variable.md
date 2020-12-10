@@ -16,3 +16,24 @@ Key | Description | Type | Default | Required | Support Level
 
 
 
+### Usage / Example  
+
+A `user`'s document may look like:  
+```
+{
+  id: "userid123",
+  favorite_callflow_id: "callflowid123",
+  ...(more info such as first_name, last_name, etc)
+}
+```
+
+So the `callflow_variable` module would look like:  
+```
+{
+  module: "callflow_variable",
+  data: {
+    id: "userid123",
+    variable: "favorite_callflow_id"
+  }
+}
+```
