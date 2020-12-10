@@ -30,6 +30,16 @@
 
 -type variable_key() :: kz_term:api_ne_binary() | kz_term:api_ne_binaries().
 
+-define(ALLOWED_BRANCH_DOC_TYPES, kapps_config:get_ne_binaries(?CF_CONFIG_CAT
+                                                              ,<<"allowed_branch_doc_types">>
+                                                              ,[<<"users">>
+                                                               ,<<"devices">>
+                                                               ,<<"locations">>
+                                                               ,<<"groups">>
+                                                               ]
+                                                              )
+       ).
+
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module
 %% @end
@@ -38,25 +48,41 @@
 handle(Data, Call) ->
     DocId = kz_json:get_ne_binary_value(<<"id">>, Data),
     Variable = normalize_variable(kz_json:get_ne_binary_value(<<"variable">>, Data)),
-
+    lager:info("searching for variable ~s in doc: ~s", [Variable, DocId]),
     case get_variable(DocId, Variable, Call) of
         'undefined' ->
-            lager:info("could not branch to flow with config: ~p", [Data]),
+            lager:info("could not find variable ~s in doc: ~s", [Variable, DocId]),
             cf_exe:continue(Call);
-        Flow ->
-            lager:info("branching to flow ~p", [Data]),
-            cf_exe:branch(Flow, Call)
+        Id ->
+            lager:info("branching to callflow id: ~p", [Id]),
+            maybe_branch(kz_datamgr:open_cache_doc(kapps_call:account_db(Call), Id), Call)
     end.
 
+%%------------------------------------------------------------------------------
+%% @doc Try to branch to the callflow
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_branch({'error', any()}|{'ok', kz_json:object()}, kapps_call:call()) -> 'ok'.
+maybe_branch({'error', R}, Call) ->
+    lager:error("could not branch to callflow ~p", [R]),
+    cf_exe:continue(Call);
+maybe_branch({'ok', JObj}, Call) ->
+    maybe_branch(kz_doc:type(JObj), JObj, Call).
+
+maybe_branch('callflows', JObj, Call) ->
+    Flow = kzd_callflows:flow(JObj, kz_json:new()),
+    cf_exe:branch(Flow, Call);
+maybe_branch(_Type, _, Call) ->
+    lager:error("failed to branch due to invalid doc type ~s", [_Type]),
+    cf_exe:continue(Call).
 
 %%------------------------------------------------------------------------------
-%% @doc Open the document DocId to find the value of the variable which is the
-%% name of the callflow branch.
+%% @doc Open the document DocId to find the value of the variable which a callflow id
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_variable(kz_term:api_binary(), variable_key(), kapps_call:call()) -> kz_term:api_binary().
 get_variable('undefined', _Variable, _Call) ->
-    lager:debug("could not find document for user with undefined doc id"),
+    lager:error("could not find document for user with undefined doc id"),
     'undefined';
 get_variable(DocId, Variable, Call) ->
     lager:info("fetch doc ~p from db ~p", [DocId, kapps_call:account_db(Call)]),
@@ -69,7 +95,7 @@ get_variable(DocId, Variable, Call) ->
     end.
 
 %%------------------------------------------------------------------------------
-%% @doc ensure the doc is a user doc type or return undefined
+%% @doc ensure the doc is an allowed doc type or return undefined
 %% @end
 %%------------------------------------------------------------------------------
 -spec ensure_permitted_doc({'ok', kz_json:object()}|{'error', any()}) -> kz_json:object() | 'undefined'.
