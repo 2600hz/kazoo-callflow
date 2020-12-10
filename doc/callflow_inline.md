@@ -7,7 +7,7 @@ The `callflow_inline` module is best used as a "fallback" module where you want 
 
 ### Usage / Example  
 
-> Important: when a call is answered, the flow will stop and NOT "fallback")  
+> Important: when a call is answered, the flow will stop and NOT "fallback") to the `children._` flow   
 
 Example: 
 ```
