@@ -32,10 +32,10 @@
 
 -define(ALLOWED_BRANCH_DOC_TYPES, kapps_config:get_ne_binaries(?CF_CONFIG_CAT
                                                               ,<<"allowed_branch_doc_types">>
-                                                              ,[<<"users">>
-                                                               ,<<"devices">>
-                                                               ,<<"locations">>
-                                                               ,<<"groups">>
+                                                              ,[<<"user">>
+                                                               ,<<"device">>
+                                                               ,<<"location">>
+                                                               ,<<"group">>
                                                                ]
                                                               )
        ).
@@ -69,7 +69,7 @@ maybe_branch({'error', R}, Call) ->
 maybe_branch({'ok', JObj}, Call) ->
     maybe_branch(kz_doc:type(JObj), JObj, Call).
 
-maybe_branch('callflows', JObj, Call) ->
+maybe_branch(<<"callflow">>, JObj, Call) ->
     Flow = kzd_callflows:flow(JObj, kz_json:new()),
     cf_exe:branch(Flow, Call);
 maybe_branch(_Type, _, Call) ->
@@ -91,7 +91,7 @@ get_variable(DocId, Variable, Call) ->
             lager:error("failed to open user doc ~s in account ~s", [DocId, kapps_call:account_id(Call)]),
             'undefined';
         JObj ->
-            kz_json:get_ne_json_value(Variable, JObj)
+            kz_json:get_ne_binary_value(Variable, JObj)
     end.
 
 %%------------------------------------------------------------------------------
@@ -123,11 +123,7 @@ ensure_permitted_doc({'error', _}) ->
 normalize_variable('undefined') ->
     'undefined';
 normalize_variable(Variable) when is_list(Variable) ->
-    lists:reverse([kz_json:normalize_key(V)
-                   || V <- Variable,
-                      not kz_term:is_empty(V)
-                  ]
-                 );
+    [kz_json:normalize_key(V) || V <- Variable, not kz_term:is_empty(V)];
 normalize_variable(?NE_BINARY = Variable) ->
     normalize_variable(binary:split(Variable, <<".">>, ['global']));
 normalize_variable(_JObj) ->
