@@ -58,7 +58,7 @@ bridge(Data, Call, Endpoints) ->
                                     ,CustomSIPHeaders
                                     ,<<"false">> % IgnoreForward
                                     ,FailOnSingleReject
-                                    ,Call
+                                    ,set_context_flags(Call, Data)
                                     )
     of
         {'ok', _} ->
@@ -92,4 +92,14 @@ get_endpoints(UserId, Data, Call) ->
         {error, Error} ->
             lager:warning("error ~p building endpoint for ~s", [Error, UserId]),
             []
+    end.
+
+set_context_flags(Call, Data) ->
+    Flags = lists:filtermap(fun is_context_flag/1, kz_json:to_proplist(Data)),
+    kapps_call:kvs_store('context-flags', Flags, Call).
+
+is_context_flag({K, V}) ->
+    case kz_term:is_true(V) of
+        true -> {true, K};
+        false -> false
     end.

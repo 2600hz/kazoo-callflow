@@ -85,5 +85,15 @@ bridge_to_endpoints(Data, Call, [_|_]=Endpoints) ->
                                ,CustomSIPHeaders
                                ,<<"false">> % IgnoreForward
                                ,FailOnSingleReject
-                               ,Call
+                               ,set_context_flags(Call, Data)
                                ).
+
+set_context_flags(Call, Data) ->
+    Flags = lists:filtermap(fun is_context_flag/1, kz_json:to_proplist(Data)),
+    kapps_call:kvs_store('context-flags', Flags, Call).
+
+is_context_flag({K, V}) ->
+    case kz_term:is_true(V) of
+        true -> {true, K};
+        false -> false
+    end.
