@@ -25,6 +25,7 @@
 -export([handle/2]).
 
 -include("callflow.hrl").
+-include_lib("kazoo_call/include/kapps_call_command_types.hrl").
 
 -define(MOD_CONFIG_CAT, <<(?CF_CONFIG_CAT)/binary, ".menu">>).
 
@@ -259,21 +260,25 @@ hunt_for_callflow(Digits, Menu, Call) ->
           {'error', kz_json:object()}.
 record_greeting(AttachmentName, #cf_menu_data{greeting_id='undefined'}=Menu, Call) ->
     MediaId = recording_media_doc(<<"greeting">>, Menu, Call),
+    lager:info("created new greeting doc ~s", [MediaId]),
     record_greeting(AttachmentName, Menu#cf_menu_data{greeting_id=MediaId}, Call);
 record_greeting(AttachmentName, #cf_menu_data{greeting_id=MediaId}=Menu, Call) ->
-    lager:info("recording new menu greeting"),
+    lager:info("recording new menu greeting over ~s", [MediaId]),
     _ = kapps_call_command:audio_macro([{'prompt', <<"vm-record_greeting">>}
                                        ,{'tones', [kz_json:from_list([{<<"Frequencies">>, [440]}
                                                                      ,{<<"Duration-ON">>, 500}
                                                                      ,{<<"Duration-OFF">>, 100}
                                                                      ])
                                                   ]}
-                                       ], Call),
+                                       ]
+                                      ,Call
+                                      ),
     case kapps_call_command:b_record(AttachmentName, Call) of
         {'error', _}=E -> E;
         {'ok', JObj} ->
             NoRec = kapps_config:get_integer(?MOD_CONFIG_CAT, <<"min_greeting_length">>, 1500)
                 > kz_json:get_integer_value(<<"Length">>, JObj),
+
             case review_recording(AttachmentName, Menu, Call) of
                 {'ok', 'record'} ->
                     record_greeting(tmp_file(), Menu, Call);
@@ -281,16 +286,22 @@ record_greeting(AttachmentName, #cf_menu_data{greeting_id=MediaId}=Menu, Call) -
                     _ = kapps_call_command:b_prompt(<<"vm-recording_to_short">>, Call),
                     record_greeting(tmp_file(), Menu, Call);
                 {'ok', 'save'} ->
-                    'ok' = store_recording(AttachmentName, MediaId, Call),
-                    'ok' = update_doc([<<"media">>, <<"greeting">>], MediaId, Menu, Call),
-                    _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
-                    {'ok', Menu};
+                    _ = save_greeting(AttachmentName, Menu, MediaId, Call),
+                    {'ok', Menu#cf_menu_data{greeting_id=MediaId}};
                 {'ok', 'no_selection'} ->
                     lager:info("abandoning recorded greeting"),
                     _ = kapps_call_command:b_prompt(<<"vm-deleted">>, Call),
                     {'ok', Menu}
             end
     end.
+
+-spec save_greeting(kz_term:ne_binary(), menu(), kz_term:ne_binary(), kapps_call:call()) ->
+          kapps_api_std_return().
+save_greeting(AttachmentName, Menu, MediaId, Call) ->
+    'ok' = store_recording(AttachmentName, MediaId, Call),
+    lager:info("stored recording on ~s", [MediaId]),
+    'ok' = update_doc([<<"media">>, <<"greeting">>], MediaId, Menu, Call),
+    kapps_call_command:b_prompt(<<"vm-saved">>, Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -349,40 +360,81 @@ get_prompt(#cf_menu_data{greeting_id=Id}, Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec store_recording(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call()) ->
-          {'ok', kz_json:object()} |
-          {'error', kz_json:object()}.
+          'ok' | {'error', kz_json:json_term()}.
 store_recording(AttachmentName, MediaId, Call) ->
     lager:info("storing recording ~s as media ~s", [AttachmentName, MediaId]),
     CallerIdName = kapps_call:caller_id_name(Call),
     Description = <<"recorded by ", CallerIdName/binary>>,
-    Updates = [{<<"content_type">>, <<"audio/mpeg">>}
-              ,{<<"media_source">>, <<"recording">>}
-              ,{<<"description">>, Description}
+    Updates = [{[<<"content_type">>], <<"audio/mpeg">>}
+              ,{[<<"media_source">>], <<"recording">>}
+              ,{[<<"description">>], Description}
               ],
-    'ok' = update_doc(Updates, MediaId, Call),
-    kapps_call_command:store_file(<<"/tmp/", AttachmentName/binary>>, get_new_attachment_url(AttachmentName, MediaId, Call), Call).
+    Update = [{'update', Updates}],
+    {'ok', UpdatedMediaDoc} = kz_datamgr:update_doc(kapps_call:account_id(Call), MediaId, Update),
+    lager:info("updated meta data for ~s(~s)", [MediaId, kz_doc:revision(UpdatedMediaDoc)]),
+
+    Stored = kapps_call_command:store_file(<<"/tmp/", AttachmentName/binary>>
+                                          ,get_new_attachment_url(AttachmentName, UpdatedMediaDoc, Call)
+                                          ,Call
+                                          ),
+    kzs_publish:publish_doc(kapps_call:account_db(Call), UpdatedMediaDoc, UpdatedMediaDoc),
+    handle_stored_recording(AttachmentName, MediaId, kapps_call:account_id(Call), Stored).
+
+handle_stored_recording(AttachmentName, MediaId, AccountId, 'ok') ->
+    kz_datamgr:flush_cache_doc(AccountId, MediaId),
+    wait_for_attachment(AttachmentName, MediaId, AccountId);
+handle_stored_recording(_AttachmentName, _MediaId, _Call, {'error', _E}) ->
+    lager:info("error storing recording ~s: ~p", [_AttachmentName, _E]).
+
+wait_for_attachment(AttachmentName, MediaId, AccountId) ->
+    wait_for_attachment(AttachmentName, MediaId, AccountId
+                       ,50 % start at 50ms wait time
+                       ,kapps_config:get_integer(?MOD_CONFIG_CAT, <<"max_wait_for_attachments_ms">>, 5 * ?MILLISECONDS_IN_SECOND)
+                       ).
+
+wait_for_attachment(_AttachmentName, _MediaId, _AccountId, WaitFor, MaxWait) when WaitFor > MaxWait ->
+    lager:info("max wait (~p) for attachment ~s reached", [MaxWait, _AttachmentName]);
+wait_for_attachment(AttachmentName, MediaId, AccountId, WaitFor, MaxWait) ->
+    timer:sleep(WaitFor),
+    case kz_datamgr:open_doc(AccountId, MediaId) of
+        {'ok', JObj} -> wait_for_attachment(AttachmentName, MediaId, AccountId, WaitFor, MaxWait, JObj);
+        {'error', _E} ->
+            lager:info("error fetching media ~s: ~p", [MediaId, _E])
+    end.
+
+wait_for_attachment(AttachmentName, MediaId, AccountId, WaitFor, MaxWait, JObj) ->
+    case kz_doc:attachment(JObj, AttachmentName) of
+        'undefined' ->
+            wait_for_attachment(AttachmentName, MediaId, AccountId, WaitFor * 2, MaxWait);
+        _ ->
+            lager:info("found the attachment ~s on ~s (~s)", [AttachmentName, MediaId, kz_doc:revision(JObj)])
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec get_new_attachment_url(binary(), binary(), kapps_call:call()) -> kz_term:ne_binary().
-get_new_attachment_url(AttachmentName, MediaId, Call) ->
+-spec get_new_attachment_url(binary(), kz_json:object(), kapps_call:call()) ->
+          kz_term:ne_binary().
+get_new_attachment_url(AttachmentName, MediaDoc, Call) ->
     AccountDb = kapps_call:account_db(Call),
-    _ = case kz_datamgr:open_cache_doc(AccountDb, MediaId) of
-            {'ok', JObj} ->
-                maybe_delete_attachments(AccountDb, MediaId, JObj);
-            {'error', _} -> 'ok'
-        end,
-    kz_media_url:store(AccountDb, MediaId, AttachmentName).
+    _ = maybe_delete_attachments(AccountDb, MediaDoc),
+    kz_media_url:store(AccountDb, kz_doc:id(MediaDoc), AttachmentName).
 
--spec maybe_delete_attachments(kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object()) -> 'ok'.
-maybe_delete_attachments(AccountDb, _MediaId, JObj) ->
-    case kz_doc:maybe_remove_attachments(JObj) of
-        {'false', _} -> 'ok';
-        {'true', Removed} ->
-            _ = kz_datamgr:save_doc(AccountDb, Removed),
-            lager:debug("removing attachments from ~s", [_MediaId])
+-spec maybe_delete_attachments(kz_term:ne_binary(), kz_json:object()) -> 'ok'.
+maybe_delete_attachments(AccountDb, MediaDoc) ->
+    case kz_doc:maybe_remove_attachments(MediaDoc) of
+        {'false', _} ->
+            lager:debug("no attachments to remove from ~s", [kz_doc:id(MediaDoc)]);
+        {'true', _} ->
+            Update = [{'update', [{[<<"_attachments">>], 'null'}
+                                 ,{[<<"pvt_attachments">>], 'null'}
+                                 ]
+                      }
+                     ,{'ensure_saved', 'true'}
+                     ],
+            {'ok', Updated} = kz_datamgr:update_doc(AccountDb, kz_doc:id(MediaDoc), Update),
+            lager:info("removed attachments from ~s (~s)", [kz_doc:id(MediaDoc), kz_doc:revision(Updated)])
     end.
 
 %%------------------------------------------------------------------------------
@@ -447,37 +499,19 @@ recording_media_doc(Type, #cf_menu_data{name=MenuName
 %% @end
 %%------------------------------------------------------------------------------
 
--spec update_doc(kz_term:text(), kz_json:json_term(), menu() | kz_term:ne_binary(),  kapps_call:call() | kz_term:ne_binary()) ->
-          'ok' | {'error', atom()}.
-update_doc(Key, Value, #cf_menu_data{menu_id=Id}, Db) ->
-    update_doc(Key, Value, Id, Db);
-update_doc(Key, Value, Id, <<_/binary>> = Db) ->
-    case kz_datamgr:open_doc(Db, Id) of
+-spec update_doc(kz_json:path(), kz_json:json_term(), menu() | kz_term:ne_binary(),  kapps_call:call() | kz_term:ne_binary()) -> 'ok'.
+update_doc(Path, Value, #cf_menu_data{menu_id=Id}, Db) ->
+    update_doc(Path, Value, Id, Db);
+update_doc(Path, Value, Id, <<Db/binary>>) ->
+    Update = [{'update', [{Path, Value}]}
+             ,{'ensure_saved', 'true'}
+             ],
+    case kz_datamgr:update_doc(Db, Id, Update) of
         {'error', _}=E -> lager:info("unable to update ~s in ~s, ~p", [Id, Db, E]);
-        {'ok', JObj} ->
-            case kz_datamgr:save_doc(Db, kz_json:set_value(Key, Value, JObj)) of
-                {'error', 'conflict'} -> update_doc(Key, Value, Id, Db);
-                {'ok', _} -> 'ok';
-                {'error', _}=E -> lager:info("unable to update ~s in ~s, ~p", [Id, Db, E])
-            end
+        {'ok', _JObj} -> lager:info("updated menu ~s with ~s: ~p", [Id, Path, Value])
     end;
-update_doc(Key, Value, Id, Call) ->
-    update_doc(Key, Value, Id, kapps_call:account_db(Call)).
-
--spec update_doc(kz_term:proplist(), kz_term:ne_binary(), kapps_call:call() | kz_term:ne_binary()) ->
-          'ok' | {'error', atom()}.
-update_doc(Updates, Id, <<_/binary>> = Db) ->
-    case kz_datamgr:open_doc(Db, Id) of
-        {'error', _}=E -> lager:info("unable to update ~s in ~s, ~p", [Id, Db, E]);
-        {'ok', JObj} ->
-            case kz_datamgr:save_doc(Db, kz_json:set_values(Updates, JObj)) of
-                {'error', 'conflict'} -> update_doc(Updates, Id, Db);
-                {'ok', _} -> 'ok';
-                {'error', _}=E -> lager:info("unable to update ~s in ~s, ~p", [Id, Db, E])
-            end
-    end;
-update_doc(Updates, Id, Call) ->
-    update_doc(Updates, Id, kapps_call:account_db(Call)).
+update_doc(Path, Value, Id, Call) ->
+    update_doc(Path, Value, Id, kapps_call:account_db(Call)).
 
 %%------------------------------------------------------------------------------
 %% @doc
