@@ -221,7 +221,8 @@ maybe_match_users(Call, State, [U|Us], MatchNum) ->
         'invalid' ->
             lager:info("invalid key press"),
             _ = play_invalid(Call),
-            maybe_match_users(Call, State, [U|Us], MatchNum)
+            maybe_match_users(Call, State, [U|Us], MatchNum);
+        'ok' -> 'ok'
     end.
 
 -spec maybe_match_user(kapps_call:call(), directory_user(), pos_integer(), non_neg_integer()) -> dtmf_action().
