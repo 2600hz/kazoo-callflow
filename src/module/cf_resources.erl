@@ -291,14 +291,21 @@ get_asserted_identity(_Data, Call) ->
         {'error', _E} ->
             {'undefined', 'undefined', 'undefined'};
         {'ok', Endpoint} ->
-            CallerId = kzd_devices:caller_id(Endpoint),
-            {DefaultNumber, DefaultName, DefaultRealm} =
-                maybe_default_asserted_identity(Endpoint, Call),
-            {kzd_caller_id:asserted_number(CallerId, DefaultNumber)
-            ,kzd_caller_id:asserted_name(CallerId, DefaultName)
-            ,kzd_caller_id:asserted_realm(CallerId, DefaultRealm)
-            }
+            maybe_asserted_identity(Endpoint, Call, should_set_asserted_on_call_fwd(Endpoint, Call))
     end.
+
+-spec maybe_asserted_identity(kz_endpoint:endpoint(), kapps_call:call(), boolean()) ->
+          {kz_term:api_binary(), kz_term:api_binary(), kz_term:api_binary()}.
+maybe_asserted_identity(_, _Call, 'false') ->
+    {'undefined', 'undefined', 'undefined'};
+maybe_asserted_identity(Endpoint, Call, 'true') ->
+    CallerId = kzd_devices:caller_id(Endpoint),
+    {DefaultNumber, DefaultName, DefaultRealm} =
+    maybe_default_asserted_identity(Endpoint, Call),
+    {kzd_caller_id:asserted_number(CallerId, DefaultNumber)
+    ,kzd_caller_id:asserted_name(CallerId, DefaultName)
+    ,kzd_caller_id:asserted_realm(CallerId, DefaultRealm)
+    }.
 
 -spec maybe_default_asserted_identity(kz_endpoint:endpoint(), kapps_call:call()) ->
           {kz_term:api_binary(), kz_term:api_binary(), kz_term:api_binary()}.
@@ -312,6 +319,12 @@ maybe_default_asserted_identity(Endpoint, Call) ->
             ,kapps_call:account_realm(Call)
             }
     end.
+
+-spec should_set_asserted_on_call_fwd(kz_endpoint:endpoint(), kapps_call:call()) -> boolean().
+should_set_asserted_on_call_fwd(Endpoint, Call) ->
+    not (kapps_call:is_call_forward(Call)
+         andalso kzd_devices:call_forward_keep_caller_id(Endpoint)
+        ).
 
 -spec get_asserted_default_name(kz_json:object(), kapps_call:call()) -> kz_term:api_binary().
 get_asserted_default_name(CallerId, Call) ->
