@@ -225,7 +225,7 @@ maybe_match_users(Call, State, [U|Us], MatchNum) ->
         'ok' -> 'ok'
     end.
 
--spec maybe_match_user(kapps_call:call(), directory_user(), pos_integer(), non_neg_integer()) -> dtmf_action().
+-spec maybe_match_user(kapps_call:call(), directory_user(), pos_integer(), non_neg_integer()) -> dtmf_action() | 'ok'.
 maybe_match_user(Call, _U, _MatchNum, 0) ->
     lager:info("maximum try to receive DTMF from caller, hanging up"),
     _ = play_no_users(Call),
