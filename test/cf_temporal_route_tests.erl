@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -1005,8 +1005,11 @@ maybe_build_rule_test_() ->
     LSec = calendar:datetime_to_gregorian_seconds(NowDT),
 
     TodayGS = kz_time:to_gregorian_seconds({Today, {0, 0, 0}}, TZ),
+    TodayBin = kz_date:to_iso8601(Today),
     YesterdayGS = TodayGS - ?SECONDS_IN_DAY,
+    YesterdayBin = kz_date:to_iso8601(YesterdayGS),
     TomorrowGS = TodayGS + ?SECONDS_IN_DAY,
+    TomorrowBin = kz_date:to_iso8601(TomorrowGS),
 
     RunTest = fun(Id, RulesDoc) ->
                       cf_temporal_route:maybe_build_rule([], LSec, <<"unknown">>, TZ, NowDT, [], Id, RulesDoc)
@@ -1017,6 +1020,19 @@ maybe_build_rule_test_() ->
              ,{"StartDate in the past, EndDate in the past: rule skipped", 'undefined', rules_doc(YesterdayGS, YesterdayGS+1)}
              ,{"StartDate in the past, EndDate in the future: rule built", kz_binary:rand_hex(4), rules_doc(YesterdayGS, TomorrowGS)}
              ,{"StartDate in the future, EndDate in the future: rule skipped", 'undefined', rules_doc(TomorrowGS, TomorrowGS+1)}
+             ,{"Just StartDate, in the past and excluded today: rule skipped", 'undefined', rules_doc(YesterdayGS, 'undefined', [TodayBin])}
+             ,{"Just StartDate, in the past and excluded yesterday and tomorrow: rule built"
+              ,kz_binary:rand_hex(4)
+              ,rules_doc(YesterdayGS, 'undefined', [YesterdayBin, TomorrowBin])
+              }
+             ,{"StartDate in the past, EndDate in the future and excluded today: rule skipped"
+              ,'undefined'
+              ,rules_doc(YesterdayGS, TomorrowGS, [TodayBin])
+              }
+             ,{"StartDate in the past, EndDate in the future and excluded yesterday and tomorrow: rule built"
+              ,kz_binary:rand_hex(4)
+              ,rules_doc(YesterdayGS, TomorrowGS, [YesterdayBin, TomorrowBin])
+              }
              ],
     [{Label, try_rules_doc(RunTest, RuleId, RulesDoc)}
      || {Label, RuleId, RulesDoc} <- Inputs
@@ -1034,8 +1050,13 @@ rules_doc(StartDate) ->
 
 -spec rules_doc(kz_time:gregorian_seconds(), kz_time:gregorian_seconds()) -> kzd_temporal_rules:doc().
 rules_doc(StartDate, EndDate) ->
+    rules_doc(StartDate, EndDate, 'undefined').
+
+-spec rules_doc(kz_time:gregorian_seconds(), kz_time:gregorian_seconds(), kz_term:api_ne_binaries()) -> kzd_temporal_rules:doc().
+rules_doc(StartDate, EndDate, Exclude) ->
     Setters = [{fun kzd_temporal_rules:set_start_date/2, StartDate}
               ,{fun kzd_temporal_rules:set_end_date/2, EndDate}
+              ,{fun kzd_temporal_rules:set_exclude/2, Exclude}
               ],
     kz_doc:setters(kzd_temporal_rules:new(), Setters).
 

@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Controls and picks Callflows based rules.
 %%%
 %%% <h4>Data options:</h4>
@@ -191,7 +191,7 @@ maybe_build_rule(Routes, LSec, AccountDb, TZ, NowDatetime, Rules, Id, RulesDoc) 
     EndDate = maybe_date_from_gregorian_seconds(kzd_temporal_rules:end_date(RulesDoc), TZ),
     RuleName = kzd_temporal_rules:name(RulesDoc, ?RULE_DEFAULT_NAME),
 
-    case should_build_rule(NowDatetime, {StartDate, {0,0,0}}, {EndDate, {23, 59,59}}) of
+    case should_build_rule(NowDatetime, {StartDate, {0,0,0}}, {EndDate, {23, 59,59}}, kzd_temporal_rules:exclude(RulesDoc, []), RuleName) of
         'false' ->
             lager:warning("rule ~p is either in the past or in the future, discarding", [RuleName]),
             get_temporal_rules(Routes, LSec, AccountDb, TZ, NowDatetime, Rules);
@@ -204,14 +204,22 @@ maybe_build_rule(Routes, LSec, AccountDb, TZ, NowDatetime, Rules, Id, RulesDoc) 
 maybe_date_from_gregorian_seconds('undefined', _TZ) -> 'undefined';
 maybe_date_from_gregorian_seconds(EndDate, TZ) -> kz_date:from_gregorian_seconds(EndDate, TZ).
 
--spec should_build_rule(kz_time:datetime(), kz_time:datetime(), kz_time:datetime() | {'undefined', kz_time:time()}) -> boolean().
-should_build_rule(DateTime, StartDateTime, {'undefined', _}) ->
-    %% StartDateTime < Datetime
-    'past' =:= kz_date:relative_difference(DateTime, StartDateTime);
-should_build_rule(DateTime, StartDateTime, EndDateTime) ->
-    %% StartDateTime < Datetime < EndDateTime
-    'past' =:= kz_date:relative_difference(DateTime, StartDateTime)
-        andalso 'future' =:= kz_date:relative_difference(DateTime, EndDateTime).
+-spec should_build_rule(kz_time:datetime(), kz_time:datetime(), kz_time:datetime() | {'undefined', kz_time:time()}, kz_term:ne_binaries(), kz_term:ne_binary()) -> boolean().
+should_build_rule(NowDateTime, StartDateTime, {'undefined', _}, [], _) ->
+    %% StartDateTime < NowDatetime
+    'past' =:= kz_date:relative_difference(NowDateTime, StartDateTime);
+should_build_rule(NowDateTime, StartDateTime, EndDateTime, [], _) ->
+    %% StartDateTime < NowDatetime < EndDateTime
+    'past' =:= kz_date:relative_difference(NowDateTime, StartDateTime)
+        andalso 'future' =:= kz_date:relative_difference(NowDateTime, EndDateTime);
+should_build_rule({Today, _} = NowDateTime, StartDateTime, EndDateTime, Exclude, RuleName) ->
+    case lists:member(kz_date:to_iso8601(Today), Exclude) of
+        'false' ->
+            should_build_rule(NowDateTime, StartDateTime, EndDateTime, [], RuleName);
+        'true' ->
+            lager:debug("rule ~p configured to be excluded today, discarding", [RuleName]),
+            'false'
+    end.
 
 -spec build_rule(kz_term:ne_binary(), kzd_temporal_rules:doc(), kz_time:date(), end_date(), kz_term:ne_binary()) -> rule().
 build_rule(Id, RulesDoc, StartDate, EndDate, RuleName) ->
