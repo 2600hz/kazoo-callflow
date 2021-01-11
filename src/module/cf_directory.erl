@@ -156,6 +156,9 @@ directory_start(Call, State, Loop) ->
     case play_directory_instructions(Call, search_fields(State)) of
         {'ok', <<>>} -> directory_start(Call, State, Loop - 1);
         {'ok', DTMF} -> collect_digits(Call, State, DTMF);
+        {'error', 'channel_hungup'} ->
+            lager:debug("failed to collect digits, channel_hungup"),
+            cf_exe:stop(Call);
         {'error', _Error} ->
             lager:error("failed to collect digits: ~p", [_Error]),
             cf_exe:stop(Call)
