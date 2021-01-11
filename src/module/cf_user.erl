@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -36,7 +36,10 @@ maybe_bridge(_Data, Call, []) ->
                 ,[kz_json:get_ne_binary_value(<<"id">>, _Data)]
                 ),
     cf_exe:continue(Call);
-maybe_bridge(Data, Call, Endpoints) ->
+maybe_bridge(Data, Call0, Endpoints) ->
+    %% maybe start recording on inbound leg
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
+
     bridge(Data, Call, Endpoints).
 
 -spec bridge(kz_json:object(), kapps_call:call(), kz_json:objects()) -> 'ok'.

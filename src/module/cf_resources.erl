@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Callflow resource.
 %%%
 %%% <h4>Data options:</h4>
@@ -78,7 +78,8 @@
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
-handle(Data, Call) ->
+handle(Data, Call0) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"offnet">>),
     'ok' = kapi_offnet_resource:publish_req(build_offnet_request(Data, Call)),
     case wait_for_stepswitch(Call) of
         {<<"SUCCESS">>, _} ->

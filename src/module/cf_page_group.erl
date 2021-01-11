@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -63,9 +63,12 @@ audio_option(Data) ->
 
 -spec send_page(kz_json:objects(), integer(), kz_json:object(), kz_json:object(), kapps_call:call()) ->
           {'error', 'timeout' | kz_json:object()} | {'ok', kz_json:object()}.
-send_page(Endpoints, Timeout, CCVs, Options, Call) ->
+send_page(Endpoints, Timeout, CCVs, Options, Call0) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
+
     {CIDNumber, CIDName} = kz_attributes:caller_id(Call),
     lager:info("attempting page group of ~b members with caller-id (~s/~s)", [length(Endpoints), CIDNumber, CIDName]),
+
     kapps_call_command:b_page(Endpoints
                              ,Timeout
                              ,CIDName
