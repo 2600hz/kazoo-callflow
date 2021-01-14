@@ -26,7 +26,7 @@
 handle(Data, Call) ->
     handle(Data, Call, get_action(Data)).
 
--spec handle(kz_json:object(), kapps_call:call(), kz_term:ne_binary()) -> kapps_call:call().
+-spec handle(kz_json:object(), kapps_call:call(), kz_term:ne_binary()) -> 'ok'.
 handle(Data, Call, <<"start">>) ->
     Options = asr_options(Data),
     kapps_call_command:start_detect_speech(Options, Call),
