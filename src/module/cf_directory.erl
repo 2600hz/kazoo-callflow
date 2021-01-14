@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Present a directory menu to the caller.
 %%%
 %%% <strong>Basic flow of a directory call:</strong>
@@ -156,6 +156,9 @@ directory_start(Call, State, Loop) ->
     case play_directory_instructions(Call, search_fields(State)) of
         {'ok', <<>>} -> directory_start(Call, State, Loop - 1);
         {'ok', DTMF} -> collect_digits(Call, State, DTMF);
+        {'error', 'channel_hungup'} ->
+            lager:debug("failed to collect digits, channel_hungup"),
+            cf_exe:stop(Call);
         {'error', _Error} ->
             lager:error("failed to collect digits: ~p", [_Error]),
             cf_exe:stop(Call)
@@ -221,10 +224,11 @@ maybe_match_users(Call, State, [U|Us], MatchNum) ->
         'invalid' ->
             lager:info("invalid key press"),
             _ = play_invalid(Call),
-            maybe_match_users(Call, State, [U|Us], MatchNum)
+            maybe_match_users(Call, State, [U|Us], MatchNum);
+        'ok' -> 'ok'
     end.
 
--spec maybe_match_user(kapps_call:call(), directory_user(), pos_integer(), non_neg_integer()) -> dtmf_action().
+-spec maybe_match_user(kapps_call:call(), directory_user(), pos_integer(), non_neg_integer()) -> dtmf_action() | 'ok'.
 maybe_match_user(Call, _U, _MatchNum, 0) ->
     lager:info("maximum try to receive DTMF from caller, hanging up"),
     _ = play_no_users(Call),
