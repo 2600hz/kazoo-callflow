@@ -301,7 +301,7 @@ maybe_asserted_identity(_, _Call, 'false') ->
 maybe_asserted_identity(Endpoint, Call, 'true') ->
     CallerId = kzd_devices:caller_id(Endpoint),
     {DefaultNumber, DefaultName, DefaultRealm} =
-    maybe_default_asserted_identity(Endpoint, Call),
+        maybe_default_asserted_identity(Endpoint, Call),
     {kzd_caller_id:asserted_number(CallerId, DefaultNumber)
     ,kzd_caller_id:asserted_name(CallerId, DefaultName)
     ,kzd_caller_id:asserted_realm(CallerId, DefaultRealm)
