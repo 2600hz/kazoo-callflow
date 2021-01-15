@@ -289,8 +289,15 @@ maybe_start_recording(Call) ->
 
 -spec maybe_start_account_recording(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call()) -> kapps_call:call().
 maybe_start_account_recording(FromNetwork, ToNetwork, Call) ->
-    {'ok', Endpoint} = kz_endpoint:get(kapps_call:account_id(Call), Call),
+    case kz_endpoint:get(kapps_call:account_id(Call), Call) of
+        {'ok', Endpoint} ->
+            maybe_start_account_recording(FromNetwork, ToNetwork, Call, Endpoint);
+        {'error', _E} ->
+            Call
+    end.
 
+-spec maybe_start_account_recording(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call(), kz_json:object()) -> kapps_call:call().
+maybe_start_account_recording(FromNetwork, ToNetwork, Call, Endpoint) ->
     case kz_account_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
         {'true', NewCall} -> NewCall;
         'false' ->
