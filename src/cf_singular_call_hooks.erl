@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2014-2020, 2600Hz
+%%% @copyright (C) 2014-2021, 2600Hz
 %%% @doc A singular call is as an entire conversation as dialed by the caller,
 %%% and it may comprise of multiple "legs" or "calls".
 %%%
@@ -142,7 +142,7 @@ send_end_hook(Call, Event) ->
     CallID =
         case ReferredBy of
             'undefined' -> kapps_call:call_id_direct(Call);
-                                                % if we were a forwarded call, refer to the original call id (bridge id)
+            %% if we were a forwarded call, refer to the original call id (bridge id)
             _ -> kapps_call:custom_channel_var(<<"Bridge-ID">>, Call)
         end,
 

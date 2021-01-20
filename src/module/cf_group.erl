@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -47,6 +47,15 @@ attempt_group(Data, Call) ->
 -spec attempt_endpoints(kz_json:object(), kz_json:object(), kapps_call:call()) -> 'ok'.
 attempt_endpoints(JObj, Data, Call) ->
     Endpoints = build_endpoints(JObj, Call),
+
+    attempt_endpoints(JObj, Data, Call, Endpoints).
+
+attempt_endpoints(_JObj, _Data, Call, []) ->
+    lager:info("group has no endpoints"),
+    cf_exe:continue(Call);
+attempt_endpoints(JObj, Data, Call0, Endpoints) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
+
     Timeout = kz_term:to_integer(
                 kz_json:find(<<"timeout">>, [JObj, Data], ?DEFAULT_TIMEOUT_S)
                ),
@@ -61,7 +70,7 @@ attempt_endpoints(JObj, Data, Call) ->
                 ),
     lager:info("attempting group of ~b members with strategy ~s", [length(Endpoints), Strategy]),
     _ = kapps_call_command:b_answer(Call),
-    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, <<"true">>, Ringback, 'undefined', IgnoreForward, Call) of
+    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, 'true', Ringback, 'undefined', IgnoreForward, Call) of
         {'ok', _} ->
             lager:info("completed successful bridge to the group - call finished normally"),
             cf_exe:stop(Call);
