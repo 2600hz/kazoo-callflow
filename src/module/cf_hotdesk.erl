@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Desk is Hot.
 %%%
 %%% <h4>Data options:</h4>
@@ -113,19 +113,34 @@ handle_action(<<"toggle">>, Hotdesk, Call) ->
 
 bridge_to_endpoints(#hotdesk{endpoint_ids=EndpointIds}, Call) ->
     Endpoints = build_endpoints(EndpointIds, Call),
+
+    maybe_bridge_to_endpoints(Endpoints, Call).
+
+-spec maybe_bridge_to_endpoints(kz_json:objects(), kapps_call:call()) ->
+          {'ok', kz_json:object()} |
+          {'fail', kz_json:object()} |
+          {'error', any()}.
+maybe_bridge_to_endpoints([], _Call) ->
+    {'error', 'no_endpoints'};
+maybe_bridge_to_endpoints(Endpoints, Call0) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
+
     IgnoreEarlyMedia = kz_endpoints:ignore_early_media(Endpoints),
     kapps_call_command:b_bridge(Endpoints, ?DEFAULT_TIMEOUT_S, <<"simultaneous">>, IgnoreEarlyMedia, Call).
 
+-spec build_endpoints(kz_term:ne_binaries(), kapps_call:call()) -> kz_json:objects().
 build_endpoints(EndpointIds, Call) ->
-    build_endpoints(EndpointIds, [], Call).
+    lists:foldl(fun(Id, Acc) -> build_endpoint(Id, Acc, Call) end
+               ,[]
+               ,EndpointIds
+               ).
 
-build_endpoints([], Endpoints, _) -> Endpoints;
-build_endpoints([EndpointId|EndpointIds], Endpoints, Call) ->
+-spec build_endpoint(kz_term:ne_binary(), kz_json:objects(), kapps_call:call()) -> kz_json:objects().
+build_endpoint(EndpointId, Acc, Call) ->
     case kz_endpoint:build(EndpointId, Call) of
-        {'ok', Endpoint} ->
-            build_endpoints(EndpointIds, [Endpoint|Endpoints], Call);
-        {'error', _} ->
-            build_endpoints(EndpointIds, Endpoints, Call)
+        {'ok', [Endpoint]} -> [Endpoint|Acc];
+        {'ok', Endpoints} -> Endpoints ++ Acc;
+        {'error', _} -> Acc
     end.
 
 %%------------------------------------------------------------------------------
