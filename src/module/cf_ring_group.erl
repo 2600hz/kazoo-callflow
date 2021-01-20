@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -88,7 +88,7 @@ repeat(Data, Call, N) ->
            end,
     repeat(Data, Call, N, Next).
 
--spec repeat(kz_json:object(), kapps_call:call(), pos_integer(), attempt_result()) -> 'ok'.
+-spec repeat(kz_json:object(), kapps_call:call(), non_neg_integer(), attempt_result()) -> 'ok'.
 repeat(_Data, Call, _N, 'stop') ->
     cf_exe:stop(Call);
 repeat(Data, Call, N, 'continue') ->
@@ -100,7 +100,9 @@ repeat(_Data, _Call, _N, 'fail') ->
 
 -spec attempt_endpoints(kz_json:objects(), kz_json:object(), kapps_call:call()) ->
           'stop' | 'fail' | 'continue'.
-attempt_endpoints(Endpoints, Data, Call) ->
+attempt_endpoints(Endpoints, Data, Call0) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
+
     FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, 'undefined'),
     Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
     Strategy = freeswitch_strategy(Data),
@@ -108,7 +110,7 @@ attempt_endpoints(Endpoints, Data, Call) ->
     IgnoreForward = kz_json:get_binary_boolean(<<"ignore_forward">>, Data, <<"true">>),
 
     lager:info("attempting ring group of ~b endpoints with strategy ~s", [length(Endpoints), Strategy]),
-    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, <<"true">>
+    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, 'true'
                                     ,kz_media_util:media_path(Ringback, kapps_call:account_id(Call))
                                     ,'undefined', IgnoreForward, FailOnSingleReject, Call
                                     )

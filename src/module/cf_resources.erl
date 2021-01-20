@@ -78,7 +78,8 @@
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
-handle(Data, Call) ->
+handle(Data, Call0) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"offnet">>),
     'ok' = kapi_offnet_resource:publish_req(build_offnet_request(Data, Call)),
     case wait_for_stepswitch(Call) of
         {<<"SUCCESS">>, _} ->
