@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -70,8 +70,11 @@ bridge_to_endpoints(Data, Call) ->
 
 -spec bridge_to_endpoints(kz_json:object(), kapps_call:call(), kz_endpoint:endpoints()) ->
           cf_api_bridge_return().
-bridge_to_endpoints(Data, Call, [_|_]=Endpoints) ->
-    FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, 'undefined'),
+bridge_to_endpoints(Data, Call0, [_|_]=Endpoints) ->
+    %% maybe start recording on inbound leg
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
+
+    FailOnSingleReject = kz_json:get_binary_boolean(<<"fail_on_single_reject">>, Data),
     Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
     IgnoreEarlyMedia = kz_endpoints:ignore_early_media(Endpoints),
     Strategy = kz_json:get_ne_binary_value(<<"dial_strategy">>, Data, <<"simultaneous">>),
@@ -94,6 +97,6 @@ set_context_flags(Call, Data) ->
 
 is_context_flag({K, V}) ->
     case kz_term:is_true(V) of
-        true -> {true, K};
-        false -> false
+        'true' -> {'true', K};
+        'false' -> 'false'
     end.

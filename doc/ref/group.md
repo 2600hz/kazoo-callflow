@@ -13,6 +13,7 @@ Key | Description | Type | Default | Required | Support Level
 `endpoints.[]` |   | `string()` |   | `false` |  
 `endpoints` | List of endpoint (device/user/group) IDs | `array(string())` | `[]` | `false` |  
 `fail_on_single_reject` | If any leg rejects the call, cancel all other legs | `boolean()` |   | `false` |  
+`group_id` | ID of the group | `string()` |   | `false` |  
 `id` | Group ID | `string()` |   | `false` |  
 `ignore_forward` | Whether to ignore forwarded phones | `boolean()` | `true` | `false` |  
 `repeats` | How many times to repeat dialing the group | `integer()` | `1` | `false` |  

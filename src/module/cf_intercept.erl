@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2020, 2600Hz
+%%% @copyright (C) 2013-2021, 2600Hz
 %%% @doc Intercept a call.
 %%%
 %%% <h4>Data options:</h4>
@@ -241,7 +241,9 @@ maybe_add_other_leg(Channel, Legs) ->
     end.
 
 -spec intercept_call(kz_term:ne_binary(), kapps_call:call()) -> 'ok'.
-intercept_call(UUID, Call) ->
+intercept_call(UUID, Call0) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
+
     _ = kapps_call_command:send_command(intercept_cmd(UUID), Call),
     case wait_for_intercept(Call) of
         {'error', _E} ->

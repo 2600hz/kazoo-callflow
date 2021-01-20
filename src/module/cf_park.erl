@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -807,8 +807,10 @@ ringback_parker(EndpointId, SlotNumber, Slot, Data, Call0) ->
                                   ,set_command(CVars)
                                   ,Endpoint
                                   ),
-            kapps_call_command:bridge([EP], Call),
-            wait_for_ringback(Timeout, Call);
+            Call1 = cf_util:maybe_start_recording_to(Call, <<"onnet">>),
+
+            kapps_call_command:bridge([EP], Call1),
+            wait_for_ringback(Timeout, Call1);
         _ -> 'failed'
     end.
 
