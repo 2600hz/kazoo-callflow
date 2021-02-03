@@ -1315,8 +1315,9 @@ message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
             _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
             message_menu([{'prompt', <<"vm-message_menu">>}], Box, Call, RetryLoop+1)
     end;
-message_menu(_Prompt, _Box, _Call, RetryLoop) when RetryLoop > ?MAX_MESSAGE_MENU_LOOPS ->
-    lager:debug("hangup channel, not message action selected after ~p retries", [?MAX_MESSAGE_MENU_LOOPS]),
+message_menu(_Prompt, _Box, Call, RetryLoop) when RetryLoop > ?MAX_MESSAGE_MENU_LOOPS ->
+    lager:debug("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
+    _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
     {'error', 'channel_hungup'}.
 
 %%------------------------------------------------------------------------------
