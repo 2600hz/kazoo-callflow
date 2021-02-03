@@ -2,13 +2,7 @@
 %%% @copyright (C) 2014-2021, 2600Hz
 %%% @doc Plays tones to the caller
 %%%
-%%% <h4>Data options:</h4>
-%%% <dl>
-%%%   <dt>`tones`</dt>
-%%%   <dd>List of 'tone' JSON objects to play.</dd>
-%%% </dl>
-%%%
-%%% A tone object is made up of a list of tones, and duration-on/off times.
+%%% A tone object is made up of a list of tones and duration-on/off times.
 %%% Optionally set repeat and volume
 %%%
 %%% This Source Code Form is subject to the terms of the Mozilla Public

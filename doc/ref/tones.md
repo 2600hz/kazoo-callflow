@@ -16,7 +16,7 @@ Key | Description | Type | Default | Required | Support Level
 `tones.[].frequencies` | list of Frequencies to play | `array(integer())` |   | `true` |  
 `tones.[].repeat` | How many times to loop the tones | `integer()` |   | `false` |  
 `tones.[].volume` | Volume, in dB. 0 = max, negative = quieter | `integer()` |   | `false` |  
-`tones` |   | `array(object())` |   | `false` |  
+`tones` | list of tones to play to caller | `array(object())` |   | `false` |  
 
 
 
