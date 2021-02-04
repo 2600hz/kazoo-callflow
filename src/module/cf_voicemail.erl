@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Check/compose Voicemail messages.
 %%%
 %%% <h4>Data options:</h4>
@@ -50,6 +50,7 @@
 -define(KEY_SEEK_DURATION, <<"seek_duration_ms">>).
 -define(MAX_INVALID_PIN_LOOPS, 3).
 -define(MAX_CONFIG_MENU_LOOPS, 3).
+-define(MAX_MESSAGE_MENU_LOOPS, 3).
 -define(DEFAULT_SEEK_DURATION, 10 * ?MILLISECONDS_IN_SECOND).
 
 -define(MAILBOX_DEFAULT_SIZE
@@ -1259,20 +1260,19 @@ forward_message(AttachmentName, Length, Message, SrcBoxId, #mailbox{mailbox_numb
     end.
 
 %%------------------------------------------------------------------------------
-%% @doc Loops over the message menu after the first play back util the
-%% user provides a valid option
+%% @doc Loops over the message menu after the first play back until the
+%% user provides a valid option or more than `?MAX_MESSAGE_MENU_LOOPS' retries happen.
 %% @end
 %%------------------------------------------------------------------------------
--type message_menu_returns() :: {'ok', 'keep' | 'delete' | 'return' | 'replay' | 'prev' | 'next' | 'forward' | 'rewind' | 'fastforward' | 'callback'}.
-
--spec message_menu(mailbox(), kapps_call:call()) ->
-          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
-          message_menu_returns().
-message_menu(Box, Call) ->
-    message_menu([{'prompt', <<"vm-message_menu">>}], Box, Call).
+-type message_menu_returns() :: {'ok', 'keep' | 'delete' | 'return' | 'replay' | 'prev' | 'next' | 'forward' | 'rewind' | 'fastforward' | 'callback'} |
+                                {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()}.
 
 -spec message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call()) ->
-          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
+          message_menu_returns().
+message_menu(Prompt, Box, Call) ->
+    message_menu(Prompt, Box, Call, 1).
+
+-spec message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call(), pos_integer()) ->
           message_menu_returns().
 message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                         ,keep=Keep
@@ -1287,8 +1287,8 @@ message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                         }
                              ,is_ff_rw_enabled=AllowFfRw
                              ,interdigit_timeout=Interdigit
-                             }=Box, Call) ->
-    lager:info("playing message menu"),
+                             }=Box, Call, RetryLoop) when RetryLoop =< ?MAX_MESSAGE_MENU_LOOPS ->
+    lager:info("playing message menu, try ~p/~p", [RetryLoop, ?MAX_MESSAGE_MENU_LOOPS]),
     NoopId = kapps_call_command:audio_macro(Prompt, Call),
 
     case kapps_call_command:collect_digits(?KEY_LENGTH
@@ -1313,8 +1313,12 @@ message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
         {'error', _}=E -> E;
         _ ->
             _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
-            message_menu(Box, Call)
-    end.
+            message_menu([{'prompt', <<"vm-message_menu">>}], Box, Call, RetryLoop+1)
+    end;
+message_menu(_Prompt, _Box, Call, RetryLoop) when RetryLoop > ?MAX_MESSAGE_MENU_LOOPS ->
+    lager:debug("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
+    _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
+    {'error', 'channel_hungup'}.
 
 %%------------------------------------------------------------------------------
 %% @doc
