@@ -205,12 +205,16 @@ maybe_require_single_fail(Call, Acc) ->
 -spec maybe_call_forward(kapps_call:call(), kz_term:proplist()) -> kz_term:proplist().
 maybe_call_forward(Call, Acc) ->
     case kapps_call:is_call_forward(Call) of
-        'true' -> [{<<"Authorizing-ID">>, kapps_call:authorizing_id(Call)}
-                  ,{<<"Authorizing-Type">>, kapps_call:authorizing_type(Call)}
-                  ,{<<"Application-Other-Leg-UUID">>, kapps_call:custom_channel_var(<<"Call-Forward-For-UUID">>, Call)}
-                  | Acc
-                  ];
-        'false' -> Acc
+        'false' -> Acc;
+        'true' ->
+            [{<<"Authorizing-ID">>, kapps_call:authorizing_id(Call)}
+            ,{<<"Authorizing-Type">>, kapps_call:authorizing_type(Call)}
+            ,{<<"Application-Other-Leg-UUID">>, kapps_call:custom_channel_var(<<"Call-Forward-For-UUID">>, Call)}
+            ,{<<"Call-Forward">>, 'true'}
+            ,{<<"Call-Forward-From">>, kapps_call:custom_channel_var(<<"Call-Forward-From">>, Call)}
+            ,{<<"Is-Failover">>, kapps_call:custom_channel_var(<<"Is-Failover">>, Call)}
+            | Acc
+            ]
     end.
 
 -spec get_privacy_flags(kapps_call:call()) -> kz_term:proplist().
