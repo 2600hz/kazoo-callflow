@@ -309,9 +309,9 @@ maybe_start_endpoint_recording(Call, <<"offnet">>=_FromNetwork) ->
     Call.
 
 -spec maybe_start_endpoint_recording(kapps_call:call(), kz_term:ne_binary(), kz_term:api_ne_binary()) -> kapps_call:call().
-maybe_start_endpoint_recording(Call, _FromNetwork, 'undefined'=EndpointId) ->
+maybe_start_endpoint_recording(Call, _FromNetwork, 'undefined') ->
     %% Transferred outbound call.
-    lager:debug("~p endpoint_id provided, not recording endpoint", [EndpointId]),
+    lager:debug("no endpoint_id provided, not recording"),
     Call;
 maybe_start_endpoint_recording(Call, FromNetwork, EndpointId) ->
     {'ok', Endpoint} = kz_endpoint:get(EndpointId, Call),
