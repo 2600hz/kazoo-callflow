@@ -300,6 +300,7 @@ maybe_start_account_recording(Call, FromNetwork, Endpoint) ->
             Call1
     end.
 
+-spec maybe_start_endpoint_recording(kapps_call:call(), kz_term:ne_binary()) -> kapps_call:call().
 maybe_start_endpoint_recording(Call, <<"onnet">>=FromNetwork) ->
     maybe_start_endpoint_recording(Call, FromNetwork, cf_util:get_endpoint_id(Call));
 maybe_start_endpoint_recording(Call, <<"offnet">>=_FromNetwork) ->
@@ -307,6 +308,11 @@ maybe_start_endpoint_recording(Call, <<"offnet">>=_FromNetwork) ->
     %% endpoint is dialed
     Call.
 
+-spec maybe_start_endpoint_recording(kapps_call:call(), kz_term:ne_binary(), kz_term:api_ne_binary()) -> kapps_call:call().
+maybe_start_endpoint_recording(Call, _FromNetwork, 'undefined'=EndpointId) ->
+    %% Transferred outbound call.
+    lager:debug("~p endpoint_id provided, not recording endpoint", [EndpointId]),
+    Call;
 maybe_start_endpoint_recording(Call, FromNetwork, EndpointId) ->
     {'ok', Endpoint} = kz_endpoint:get(EndpointId, Call),
     case kz_account_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
