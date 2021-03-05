@@ -371,8 +371,8 @@ store_recording(AttachmentName, MediaId, Call) ->
     Updates = [{[<<"content_type">>], <<"audio/mpeg">>}
               ,{[<<"media_source">>], <<"recording">>}
               ,{[<<"description">>], Description}
-              ,{<<"pvt_previous_tts">>, <<>>}
-              ,{<<"pvt_previous_voice">>, <<>>}
+              ,{<<"pvt_previous_tts">>, 'null'}
+              ,{<<"pvt_previous_voice">>, 'null'}
               ],
     Update = [{'update', Updates}],
     {'ok', UpdatedMediaDoc} = kz_datamgr:update_doc(kapps_call:account_id(Call), MediaId, Update),
