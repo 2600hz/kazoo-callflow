@@ -32,3 +32,107 @@ Key | Description | Type | Default | Required | Support Level
 
 
 
+
+
+
+### Usage / Example  
+
+There are three separate use-cases for the `callflow` module:  
+1. Redirect to another callflow by ID  
+2. Lookup a path to an ID in another document and redirect to that callflow ID  
+3. Provide an flow to branch to (with a fallback if that flow is never answered)  
+
+#### Scenario 1  
+
+> Redirect to another callflow by ID  
+
+```
+{
+  module: "callflow",
+  data: {
+    id: "id_of_another_callflow"
+  }
+}
+```
+
+
+#### Scenario 2  
+
+> Lookup a path to an ID in another document and redirect to that callflow ID    
+
+A `user`'s document may look like:  
+```
+{
+  id: "userid123",
+  favorite_callflow_id: "callflowid123",
+  ...(more info such as first_name, last_name, etc)
+}
+```
+
+So the `callflow` module would look like:  
+```
+{
+  module: "callflow",
+  data: {
+    doc_id: "userid123",
+    path: "favorite_callflow_id"
+  }
+}
+```
+To access nested paths, two formats are supported `array` and `dot delimited string`.
+
+```
+{
+  id: "userid123",
+  "somekey": {
+    favorite_callflow_id: "callflowid123",
+  },
+  ...(more info such as first_name, last_name, etc)
+}
+```
+
+##### array
+
+```
+["somekey", "favorite_callflow_id"]
+```
+
+##### dot delimeted path
+
+```
+somekey.favorite_callflow_id
+```
+
+#### Scenario 3  
+
+> provide a flow to branch to (with a fallback if that flow is never answered)  
+
+```
+{
+  module: "callflow",
+  data: {
+    flow: {
+      module: 'tts',
+      data: {
+        text: "This is said FIRST"
+      },
+      children: {
+        _: {
+          module: 'tts',
+          data: {
+            text: "This is said SECOND"
+          }
+        }
+      }
+    }
+  },
+  children: {
+    _: {
+      module: 'tts',
+      data: {
+        text: "This is said LAST"
+      }
+    }
+  }
+}
+```

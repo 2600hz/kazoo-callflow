@@ -365,9 +365,14 @@ store_recording(AttachmentName, MediaId, Call) ->
     lager:info("storing recording ~s as media ~s", [AttachmentName, MediaId]),
     CallerIdName = kapps_call:caller_id_name(Call),
     Description = <<"recorded by ", CallerIdName/binary>>,
+    %% When the greeting changes from TTS to recording: pvt_previous_[tts,voice] keys needs to be
+    %% unset in case the user wants to use the same TTS text in the future, otherwise the TTS
+    %% audio would not be generated because of cb_media:is_tts_changed/1 check.
     Updates = [{[<<"content_type">>], <<"audio/mpeg">>}
               ,{[<<"media_source">>], <<"recording">>}
               ,{[<<"description">>], Description}
+              ,{<<"pvt_previous_tts">>, 'null'}
+              ,{<<"pvt_previous_voice">>, 'null'}
               ],
     Update = [{'update', Updates}],
     {'ok', UpdatedMediaDoc} = kz_datamgr:update_doc(kapps_call:account_id(Call), MediaId, Update),
