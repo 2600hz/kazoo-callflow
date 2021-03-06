@@ -285,7 +285,7 @@ check_mailbox(#mailbox{is_setup='false'}=Box, 'true', Call, _) ->
     %% If this is the owner of the mailbox calling in and it is not setup then jump
     %% right to the setup wizard
     lager:info("caller is the owner of this mailbox, and it has not been setup yet"),
-    check_mailbox_menu(Box, Call);
+    main_menu(Box, Call);
 check_mailbox(#mailbox{announcement_only='true', require_pin='false'}=Box, 'true', Call, _) ->
     lager:info("caller is owner of announcement only mailbox, and requires no pin"),
     check_mailbox_menu(Box, Call);
@@ -326,7 +326,10 @@ check_mailbox(#mailbox{pin=Pin
     end.
 
 -spec check_mailbox_menu(mailbox(), kapps_call:call()) -> 'ok' | {'error', 'channel_hungup'}.
-check_mailbox_menu(#mailbox{announcement_only='true'}=Box, Call) -> config_menu(Box, Call);
+check_mailbox_menu(#mailbox{announcement_only='true'
+                           ,not_configurable='false'
+                           }=Box, Call) ->
+    config_menu(Box, Call);
 check_mailbox_menu(Box, Call) -> main_menu(Box, Call).
 
 %%------------------------------------------------------------------------------
@@ -1211,28 +1214,43 @@ record_forward(AttachmentName, Message, SrcBoxId, #mailbox{media_extension=Ext
                 andalso review_recording(AttachmentName, 'false', DestBox, Call)
             of
                 'false' ->
-                    forward_message(AttachmentName, Length, Message, SrcBoxId, DestBox, Call);
+                    forward_message_task(AttachmentName, Length, Message, SrcBoxId, DestBox, Call);
                 {'ok', 'record'} ->
                     record_forward(tmp_file(Ext), Message, SrcBoxId, DestBox, Call);
                 {'ok', _Selection} ->
-                    cf_util:start_task(fun forward_message/6
-                                      ,[AttachmentName, Length, Message, SrcBoxId, DestBox]
-                                      , Call
-                                      )
+                    forward_message(AttachmentName, Length, Message, SrcBoxId, DestBox, Call)
             end;
         {'error', _R} ->
             lager:info("error while attempting to record a forward message: ~p", [_R])
     end.
 
+%%------------------------------------------------------------------------------
+%% @doc Starts a task to asynchronously forward a message to another vmbox and
+%% plays a confirmation of the operation.
+%% @end
+%%------------------------------------------------------------------------------
 -spec forward_message(kz_term:api_ne_binary(), non_neg_integer(), kz_json:object(), kz_term:ne_binary(), mailbox(), kapps_call:call()) -> 'ok'.
-forward_message(AttachmentName, Length, Message, SrcBoxId, #mailbox{mailbox_number=BoxNum
-                                                                   ,mailbox_id=BoxId
-                                                                   ,timezone=Timezone
-                                                                   ,owner_id=OwnerId
-                                                                   ,transcribe_voicemail=MaybeTranscribe
-                                                                   ,after_notify_action=Action
-                                                                   ,media_extension=Extension
-                                                                   }=DestBox, Call) ->
+forward_message(AttachmentName, Length, Message, SourceBoxId, DestinationBox, Call) ->
+    cf_util:start_task(fun forward_message_task/6
+                      ,[AttachmentName, Length, Message, SourceBoxId, DestinationBox]
+                      ,Call
+                      ),
+    _ = kapps_call_command:b_prompt(<<"vm-forward_confirmed">>, Call),
+    'ok'.
+
+%%------------------------------------------------------------------------------
+%% @doc Forwards a message to another vmbox.
+%% @end
+%%------------------------------------------------------------------------------
+-spec forward_message_task(kz_term:api_ne_binary(), non_neg_integer(), kz_json:object(), kz_term:ne_binary(), mailbox(), kapps_call:call()) -> 'ok'.
+forward_message_task(AttachmentName, Length, Message, SrcBoxId, #mailbox{mailbox_number=BoxNum
+                                                                        ,mailbox_id=BoxId
+                                                                        ,timezone=Timezone
+                                                                        ,owner_id=OwnerId
+                                                                        ,transcribe_voicemail=MaybeTranscribe
+                                                                        ,after_notify_action=Action
+                                                                        ,media_extension=Extension
+                                                                        }=DestBox, Call) ->
 
     %% When we forward a message to another vmbox, we want to update the Call `To` field to match the destination
     To = <<BoxNum/binary, "@", (kapps_call:to_realm(Call))/binary>>,
@@ -1252,8 +1270,7 @@ forward_message(AttachmentName, Length, Message, SrcBoxId, #mailbox{mailbox_numb
                     ]
                    ),
     case kvm_message:forward_message(UpdatedCall, Message, SrcBoxId, NewMsgProps) of
-        {'ok', NewCall} ->
-            _ = kapps_call_command:b_prompt(<<"vm-forward_confirmed">>, NewCall),
+        {'ok', _} ->
             send_mwi_update(DestBox);
         {'error', _, _Msg} ->
             lager:warning("failed to save forwarded voice mail message recorded media : ~p", [_Msg])
