@@ -869,9 +869,9 @@ maybe_start_call_forwarded_recording(_EndpointId, Call, {'ok', Endpoint}) ->
     FromNetwork = kapps_call:custom_channel_var(<<"Call-Forward-From">>, Call),
     case kz_endpoint_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
         'false' -> 'false';
-        {'true', {ActionKey, ActionApp}} ->
+        {'true', {ActionKey, ActionApp}, C2} ->
             NewActions = kz_json:set_value(ActionKey, ActionApp, kz_json:new()),
-            {'true', kapps_call:kvs_store('outbound_actions', NewActions, Call)}
+            {'true', kapps_call:kvs_store('outbound_actions', NewActions, C2)}
     end.
 
 -spec get_endpoint_id(kapps_call:call()) -> kz_term:api_ne_binary().
