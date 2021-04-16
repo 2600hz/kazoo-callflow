@@ -209,6 +209,7 @@ maybe_call_forward(Call, Acc) ->
         'true' ->
             [{<<"Authorizing-ID">>, kapps_call:authorizing_id(Call)}
             ,{<<"Authorizing-Type">>, kapps_call:authorizing_type(Call)}
+            ,{<<"Owner-ID">>, kapps_call:owner_id(Call)}
             ,{<<"Application-Other-Leg-UUID">>, kapps_call:custom_channel_var(<<"Call-Forward-For-UUID">>, Call)}
             ,{<<"Call-Forward">>, 'true'}
             ,{<<"Call-Forward-From">>, kapps_call:custom_channel_var(<<"Call-Forward-From">>, Call)}
