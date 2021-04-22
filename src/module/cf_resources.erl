@@ -99,13 +99,25 @@ handle(Data, Call0) ->
 
 -spec handle_bridge_failure(kz_term:api_binary(), kz_term:api_binary(), kapps_call:call()) -> 'ok'.
 handle_bridge_failure(Cause, Code, Call) ->
+    handle_bridge_failure(kapps_call:is_call_forward(Call), Cause, Code, Call).
+
+-spec handle_bridge_failure(boolean(), kz_term:api_binary(), kz_term:api_binary(), kapps_call:call()) -> 'ok'.
+handle_bridge_failure(false, Cause, Code, Call) ->
     lager:info("offnet request error, attempting to find failure branch for ~s:~s", [Code, Cause]),
     case cf_util:handle_bridge_failure(Cause, Code, Call) of
         'ok' -> lager:debug("found bridge failure child");
         'not_found' ->
             cf_util:send_default_response(Cause, Call),
             cf_exe:stop(Call, Cause)
-    end.
+    end;
+handle_bridge_failure(true, Cause, _Code, Call) ->
+    Response = kz_call_response:get_response(Cause, Call),
+    kz_call_response:send(kapps_call:call_id(Call)
+                         ,kapps_call:control_queue(Call)
+                         ,kz_json:get_value(<<"Code">>, Response)
+                         ,kz_json:get_value(<<"Message">>, Response)
+                         ),
+    cf_exe:stop(Call, Cause).
 
 %%------------------------------------------------------------------------------
 %% @doc
