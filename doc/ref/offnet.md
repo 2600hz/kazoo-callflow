@@ -14,7 +14,7 @@ Key | Description | Type | Default | Required | Support Level
 `caller_id_type` | Which configured caller-id to use (key in the 'caller_id' object) | `string()` | `external` | `false` |  
 `custom_sip_headers.in` | Custom SIP Headers to be applied to calls inbound to Kazoo from the endpoint | [#/definitions/custom_sip_headers](#custom_sip_headers) |   | `false` |  
 `custom_sip_headers.out` | Custom SIP Headers to be applied to calls outbound from Kazoo to the endpoint | [#/definitions/custom_sip_headers](#custom_sip_headers) |   | `false` |  
-`custom_sip_headers.^[a-zA-z0-9_\-]+$` | The SIP header to add | `string()` |   | `false` |  
+`custom_sip_headers.^[a-zA-z0-9_\-]+$` | The SIP header to add | `string() | boolean() | integer()` |   | `false` |  
 `custom_sip_headers` | A property list of SIP headers | `object()` |   | `false` |  
 `do_not_normalize` | Use the original requested number instead of normalizing; otherwise try to apply the endpoint's dialplan to the requested number | `boolean()` |   | `false` |  
 `dynamic_flags.[]` |   | `string()` |   | `false` |  
@@ -40,7 +40,7 @@ Custom SIP headers applied to an INVITE
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`^[a-zA-z0-9_\-]+$` | The SIP header to add | `string()` |   | `false` |  
+`^[a-zA-z0-9_\-]+$` | The SIP header to add | `string() | boolean() | integer()` |   | `false` |  
 
 
 
