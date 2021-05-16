@@ -80,7 +80,8 @@
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
 handle(Data, Call0) ->
     Call = cf_util:maybe_start_recording_to(Call0, <<"offnet">>),
-    'ok' = kapi_offnet_resource:publish_req(build_offnet_request(Data, Call)),
+    OffnetReq = build_offnet_request(Data, Call),
+    'ok' = kapi_offnet_resource:publish_req(OffnetReq),
     case wait_for_stepswitch(Call) of
         {<<"SUCCESS">>, _} ->
             lager:info("completed successful offnet request"),
@@ -99,26 +100,42 @@ handle(Data, Call0) ->
 
 -spec handle_bridge_failure(kz_term:api_binary(), kz_term:api_binary(), kapps_call:call()) -> 'ok'.
 handle_bridge_failure(Cause, Code, Call) ->
+    handle_bridge_failure(kapps_call:is_call_forward(Call), Cause, Code, Call).
+
+-spec handle_bridge_failure(boolean(), kz_term:api_binary(), kz_term:api_binary(), kapps_call:call()) -> 'ok'.
+handle_bridge_failure('false', Cause, Code, Call) ->
     lager:info("offnet request error, attempting to find failure branch for ~s:~s", [Code, Cause]),
     case cf_util:handle_bridge_failure(Cause, Code, Call) of
         'ok' -> lager:debug("found bridge failure child");
         'not_found' ->
             cf_util:send_default_response(Cause, Call),
             cf_exe:stop(Call, Cause)
-    end.
+    end;
+handle_bridge_failure('true', Cause, _Code, Call) ->
+    Response = kz_call_response:get_response(Cause, Call),
+    _ = kz_call_response:send(kapps_call:call_id(Call)
+                             ,kapps_call:control_queue(Call)
+                             ,kz_json:get_value(<<"Code">>, Response)
+                             ,kz_json:get_value(<<"Message">>, Response)
+                             ),
+    cf_exe:stop(Call, Cause).
 
 %%------------------------------------------------------------------------------
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec build_offnet_request(kz_json:object(), kapps_call:call()) -> kz_term:proplist().
+-spec build_offnet_request(kz_json:object(), kapps_call:call()) -> kapi_offnet_resource:req().
 build_offnet_request(Data, Call) ->
     {ECIDNum, ECIDName} = kz_attributes:caller_id(<<"emergency">>, Call),
+
     {AssertedNumber, AssertedName, AssertedRealm} =
         get_asserted_identity(Data, Call),
+
     {CIDNumber, CIDName} = get_caller_id(Data, Call),
+
     PrivacyFlags = get_privacy_flags(Call),
-    props:filter_undefined(
+
+    kz_json:from_list(
       [{?KEY_ACCOUNT_ID, kapps_call:account_id(Call)}
       ,{?KEY_ACCOUNT_REALM, kapps_call:account_realm(Call)}
       ,{?KEY_APPLICATION_NAME, ?APPLICATION_BRIDGE}
@@ -209,6 +226,7 @@ maybe_call_forward(Call, Acc) ->
         'true' ->
             [{<<"Authorizing-ID">>, kapps_call:authorizing_id(Call)}
             ,{<<"Authorizing-Type">>, kapps_call:authorizing_type(Call)}
+            ,{<<"Owner-ID">>, kapps_call:owner_id(Call)}
             ,{<<"Application-Other-Leg-UUID">>, kapps_call:custom_channel_var(<<"Call-Forward-For-UUID">>, Call)}
             ,{<<"Call-Forward">>, 'true'}
             ,{<<"Call-Forward-From">>, kapps_call:custom_channel_var(<<"Call-Forward-From">>, Call)}
@@ -392,17 +410,18 @@ get_original_request_user(Call) ->
 
 -spec get_sip_headers(kz_json:object(), kapps_call:call()) -> kz_term:api_object().
 get_sip_headers(Data, Call) ->
-    Routines = [fun(J) -> maybe_emit_account_id(J, Data, Call) end
-               ,fun(J) -> maybe_include_diversions(J, Call) end
-               ],
     AuthEndCSH = case kz_endpoint:get(Call) of
+                     {'error', _E} ->
+                         kz_json:new();
                      {'ok', AuthorizingEndpoint} ->
-                         kzd_devices:custom_sip_headers_outbound(AuthorizingEndpoint, kz_json:new());
-                     _ -> kz_json:new()
+                         kzd_devices:custom_sip_headers_outbound(AuthorizingEndpoint, 'undefined')
                  end,
     CSH = kz_json:get_json_value(<<"custom_sip_headers">>, Data),
     Headers = maybe_merge(AuthEndCSH, CSH),
 
+    Routines = [fun(J) -> maybe_emit_account_id(J, Data, Call) end
+               ,fun(J) -> maybe_include_diversions(J, Call) end
+               ],
     JObj = lists:foldl(fun(F, J) -> F(J) end, Headers, Routines),
     case kz_term:is_empty(JObj) of
         'true' -> 'undefined';

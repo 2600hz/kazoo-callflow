@@ -41,6 +41,7 @@ Schema for conferences
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
+`allow_shareable_link` | Indicates if the conference is reachable using a public link | `boolean()` | `false` | `false` |  
 `bridge_password` | the password used for a conference bridge | `string()` |   | `false` |  
 `bridge_username` | the username used for a conference bridge | `string()` |   | `false` |  
 `caller_controls` | caller controls (config settings) | `string()` |   | `false` |  
@@ -70,7 +71,7 @@ Key | Description | Type | Default | Required | Support Level
 `moderator.pins` | Defines the pin number(s) for moderators | `array(string())` | `[]` | `false` |  
 `moderator` | Defines the discovery (call in) properties for a moderator | `object()` | `{}` | `false` |  
 `moderator_controls` | profile on the switch for controlling the conference as a moderator | `string()` |   | `false` |  
-`name` | A friendly name for the conference | `string(1..128)` |   | `false` | `supported`
+`name` | A friendly name for the conference | `string(1..128)` |   | `true` | `supported`
 `owner_id` | The user ID who manages this conference | `string(32)` |   | `false` | `supported`
 `play_entry_tone` | Whether to play an entry tone, or the entry tone to play | `boolean() | string()` |   | `false` | `supported`
 `play_exit_tone` | Whether to play an exit tone, or the exit tone to play | `boolean() | string()` |   | `false` | `supported`
