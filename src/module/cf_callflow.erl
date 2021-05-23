@@ -41,7 +41,7 @@ handle(Data, Call) ->
 %% @doc handle the various use cases
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_callflow(kz_term:api_binary(), kz_json:api_object(), kz_term:api_binary(), kz_json:get_key(), kapps_call:call()) -> 'ok'.
+-spec handle_callflow(kz_term:api_binary(), kz_term:api_object(), kz_term:api_binary(), kz_json:get_key(), kapps_call:call()) -> 'ok'.
 handle_callflow(Id, 'undefined', 'undefined', 'undefined', Call) -> handle_id(Id, Call);
 handle_callflow('undefined', Flow, 'undefined', 'undefined', Call) -> handle_flow(Flow, Call);
 handle_callflow('undefined', 'undefined', DocId, Path, Call) -> handle_path(DocId, Path, Call);
@@ -114,7 +114,7 @@ maybe_branch(_Type, _, Call) ->
 %% @doc Open the document DocId to find the value of the path which a callflow id
 %% @end
 %%------------------------------------------------------------------------------
--spec get_path(kz_term:api_binary(), kz_json:path_key(), kapps_call:call()) -> kz_term:api_binary().
+-spec get_path(kz_term:api_binary(), kz_json:get_key(), kapps_call:call()) -> kz_term:api_binary().
 get_path('undefined', _Path, _Call) ->
     lager:error("could not find document for user with undefined doc id"),
     'undefined';
@@ -153,7 +153,7 @@ ensure_permitted_doc({'error', _}) ->
 %% can be used to get the value.
 %% @end
 %%------------------------------------------------------------------------------
--spec normalize_path(kz_json:path_key()) -> kz_json:path_key().
+-spec normalize_path(kz_json:get_key()) -> kz_json:get_key() | 'undefined'.
 normalize_path('undefined') ->
     'undefined';
 normalize_path(Path) when is_list(Path) ->
@@ -163,5 +163,3 @@ normalize_path(?NE_BINARY = Path) ->
 normalize_path(_JObj) ->
     lager:debug("unsupported path name"),
     'undefined'.
-
-

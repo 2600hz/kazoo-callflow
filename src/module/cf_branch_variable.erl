@@ -165,7 +165,7 @@ find_child_in_static_doc(Variable, Call, DocId) ->
 %% @doc ensure the doc is a user doc type or return undefined
 %% @end
 %%------------------------------------------------------------------------------
--spec ensure_permitted_doc({'ok', kz_json:object()}|{'error', any()}) -> kz_json:api_object().
+-spec ensure_permitted_doc({'ok', kz_json:object()}|{'error', any()}) -> kz_term:api_object().
 ensure_permitted_doc({'ok', JObj}) ->
     Type = kz_doc:type(JObj),
     case lists:member(Type, ?ALLOWED_BRANCH_DOC_TYPES) of
