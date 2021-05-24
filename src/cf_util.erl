@@ -64,7 +64,6 @@
 -include("callflow.hrl").
 -include_lib("kazoo_stdlib/include/kazoo_json.hrl").
 
--define(OWNER_KEY(Db, User), {?MODULE, 'owner_id', Db, User}).
 -define(SIP_USER_OWNERS_KEY(Db, User), {?MODULE, 'sip_user_owners', Db, User}).
 -define(SIP_ENDPOINT_ID_KEY(Db, User), {?MODULE, 'sip_endpoint_id', Db, User}).
 -define(PARKING_PRESENCE_KEY(Db, Request), {?MODULE, 'parking_callflow', Db, Request}).
@@ -234,20 +233,20 @@ mwi_query(JObj) ->
         {'ok', AccountDb} ->
             lager:debug("replying to mwi query"),
             Username = kz_json:get_value(<<"Username">>, JObj),
-            maybe_vm_mwi_resp(Username, Realm, AccountDb, JObj);
+            maybe_vm_mwi_resp(Username, AccountDb);
         _Else -> 'ok'
     end.
 
--spec maybe_vm_mwi_resp(kz_term:api_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object()) -> 'ok'.
-maybe_vm_mwi_resp('undefined', _Realm, _AccountDb, _JObj) -> 'ok';
-maybe_vm_mwi_resp(<<_/binary>> = VMNumber, Realm, AccountDb, JObj) ->
+-spec maybe_vm_mwi_resp(kz_term:api_binary(), kz_term:ne_binary()) -> 'ok'.
+maybe_vm_mwi_resp('undefined', _AccountDb) -> 'ok';
+maybe_vm_mwi_resp(<<VMNumber/binary>>, AccountDb) ->
     case mailbox(AccountDb, VMNumber) of
         {'ok', Doc} -> kvm_mwi:notify_vmbox(AccountDb, kz_doc:id(Doc));
-        {'error', _} -> mwi_resp(VMNumber, Realm, AccountDb, JObj)
+        {'error', _} -> mwi_resp(VMNumber, AccountDb)
     end.
 
--spec mwi_resp(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object()) -> 'ok'.
-mwi_resp(Username, _Realm, AccountDb, _JObj) ->
+-spec mwi_resp(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
+mwi_resp(Username, AccountDb) ->
     case endpoint_id_by_sip_username(AccountDb, Username) of
         {'ok', EndpointId} -> kvm_mwi:notify_endpoint(AccountDb, EndpointId);
         _Else -> 'ok'
@@ -832,11 +831,11 @@ maybe_start_endpoint_recording(<<"onnet">>, ToNetwork, Call) ->
         'false' -> Call;
         {'true', NewCall} -> NewCall
     end;
-maybe_start_endpoint_recording(<<"offnet">>, ToNetwork, Call) ->
+maybe_start_endpoint_recording(<<"offnet">>, _ToNetwork, Call) ->
     EndpointId = get_endpoint_id(Call),
 
     IsCallForward = kapps_call:is_call_forward(Call),
-    case maybe_start_offnet_endpoint_recording(EndpointId, ToNetwork, IsCallForward, Call) of
+    case maybe_start_offnet_endpoint_recording(EndpointId, IsCallForward, Call) of
         'false' -> Call;
         {'true', NewCall} -> NewCall
     end.
@@ -851,21 +850,21 @@ maybe_start_onnet_endpoint_recording(EndpointId, ToNetwork, 'false', Call) ->
         _ -> 'false'
     end;
 maybe_start_onnet_endpoint_recording(EndpointId, _ToNetwork, 'true', Call) ->
-    maybe_start_call_forwarded_recording(EndpointId, Call, kz_endpoint:get(EndpointId, Call)).
+    maybe_start_call_forwarded_endpoint(Call, kz_endpoint:get(EndpointId, Call)).
 
 %% @doc if the call isn't call-fowarded, and the endpoint is known, kz_endpoint will setup recording
 %% on answer
--spec maybe_start_offnet_endpoint_recording(kz_term:api_binary(), kz_term:ne_binary(), boolean(), kapps_call:call()) ->
+-spec maybe_start_offnet_endpoint_recording(kz_term:api_binary(), boolean(), kapps_call:call()) ->
           {'true', kapps_call:call()} | 'false'.
-maybe_start_offnet_endpoint_recording('undefined', _ToNetwork, _IsCallForward, _Call) -> 'false';
-maybe_start_offnet_endpoint_recording(_EndpointId, _ToNetwork, 'false', _Call) -> 'false';
-maybe_start_offnet_endpoint_recording(EndpointId, _ToNetwork, 'true', Call) ->
-    maybe_start_call_forwarded_recording(EndpointId, Call, kz_endpoint:get(EndpointId, Call)).
+maybe_start_offnet_endpoint_recording('undefined', _IsCallForward, _Call) -> 'false';
+maybe_start_offnet_endpoint_recording(_EndpointId, 'false', _Call) -> 'false';
+maybe_start_offnet_endpoint_recording(EndpointId, 'true', Call) ->
+    maybe_start_call_forwarded_endpoint(Call, kz_endpoint:get(EndpointId, Call)).
 
--spec maybe_start_call_forwarded_recording(kz_term:ne_binary(), kapps_call:call(), {'ok', kz_json:object()} | {'error', any()}) ->
+-spec maybe_start_call_forwarded_endpoint(kapps_call:call(), {'ok', kz_json:object()} | {'error', any()}) ->
           {'true', kapps_call:call()} | 'false'.
-maybe_start_call_forwarded_recording(_EndpointId, _Call, {'error', _E}) -> 'false';
-maybe_start_call_forwarded_recording(_EndpointId, Call, {'ok', Endpoint}) ->
+maybe_start_call_forwarded_endpoint(_Call, {'error', _E}) -> 'false';
+maybe_start_call_forwarded_endpoint(Call, {'ok', Endpoint}) ->
     FromNetwork = kapps_call:custom_channel_var(<<"Call-Forward-From">>, Call),
     case kz_endpoint_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
         'false' -> 'false';

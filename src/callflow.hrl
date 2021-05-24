@@ -31,9 +31,6 @@
 -define(DEFAULT_CHILD_KEY, <<"_">>).
 
 -define(RECORDED_NAME_KEY, [<<"media">>, <<"name">>]).
--define(CF_RECORDING_ID_KEY, <<"Recording-ID">>).
-
--define(DIALPLAN_MAP, [{<<"tone">>, <<"tones">>}]).
 
 -define(LIST_BY_NUMBER, <<"callflows/listing_by_number">>).
 -define(LIST_BY_PATTERN, <<"callflows/listing_by_pattern">>).

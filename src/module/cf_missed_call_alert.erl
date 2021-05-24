@@ -31,8 +31,6 @@
 
 -include("callflow.hrl").
 
--define(MOD_CONFIG_CAT, <<(?CF_CONFIG_CAT)/binary, ".missed_call_alert">>).
-
 %%------------------------------------------------------------------------------
 %% @doc maybe add termination handler then unconditionally
 %%      continue the flow

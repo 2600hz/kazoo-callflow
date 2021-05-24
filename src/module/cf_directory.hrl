@@ -13,8 +13,7 @@
 
 -type search_field() :: 'first' | 'last' | 'both'.
 
--record(directory, {sort_by = 'last' :: 'first' | 'last'
-                   ,search_fields = 'both' :: search_field()
+-record(directory, {search_fields = 'both' :: search_field()
                    ,min_dtmf :: pos_integer()
                    ,max_dtmf :: non_neg_integer()
                    ,confirm_match = 'false' :: boolean()

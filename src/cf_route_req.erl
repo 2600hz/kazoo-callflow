@@ -17,10 +17,6 @@
 
 -include("callflow.hrl").
 
--define(DEFAULT_METAFLOWS(AccountId)
-       ,kapps_account_config:get(AccountId, <<"metaflows">>, <<"default_metaflow">>, 'false')
-       ).
-
 -define(DEFAULT_ROUTE_WIN_TIMEOUT_MS, 3 * ?MILLISECONDS_IN_SECOND).
 -define(ROUTE_WIN_TIMEOUT_KEY, <<"route_win_timeout">>).
 -define(ROUTE_WIN_TIMEOUT, kapps_config:get_integer(?CF_CONFIG_CAT, ?ROUTE_WIN_TIMEOUT_KEY, ?DEFAULT_ROUTE_WIN_TIMEOUT_MS)).
@@ -175,12 +171,9 @@ callflow_should_respond(Call) ->
             'false'
     end.
 
--spec ccvs(kz_json:object(), kapi_route:req(), kapps_call:call()) -> kz_term:api_object().
-ccvs(Flow, _RouteReq, _Call) ->
+-spec ccvs(kzd_callflows:doc()) -> kz_term:api_object().
+ccvs(Flow) ->
     kz_json:from_list([{<<"CallFlow-ID">>, kz_doc:id(Flow)}]).
-
--spec cavs(kz_json:object(), kapi_route:req(), kapps_call:call()) -> kz_term:api_object().
-cavs(_Flow, _RouteReq, _Call) -> 'undefined'.
 
 %%------------------------------------------------------------------------------
 %% @doc Send a route response for a route request that can be fulfilled by this
@@ -205,8 +198,7 @@ send_route_response(Flow, RouteReq, Call) ->
              ,{<<"Ringback-Media">>, get_ringback_media(Flow, RouteReq)}
              ,{<<"Pre-Park">>, pre_park_action(Call)}
              ,{<<"From-Realm">>, kzd_accounts:fetch_realm(AccountId)}
-             ,{<<"Custom-Channel-Vars">>, ccvs(Flow, RouteReq, Call)}
-             ,{<<"Custom-Application-Vars">>, cavs(Flow, RouteReq, Call)}
+             ,{<<"Custom-Channel-Vars">>, ccvs(Flow)}
              ,{<<"Context">>, kapps_call:context(Call)}
              | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
              ]),
@@ -223,7 +215,7 @@ wait_for_route_win(Call, FetchId) ->
             end;
         {'kapi', {_, {'dialplan', 'route_win'}, RouteWin}} ->
             lager:info("callflow has received a route win, taking control of the call"),
-            cf_route_win:execute_callflow(RouteWin, kapps_call:from_route_win(RouteWin, Call))
+            cf_route_win:execute_callflow(kapps_call:from_route_win(RouteWin, Call))
     after ?ROUTE_WIN_TIMEOUT ->
             lager:warning("callflow didn't received a route win, exiting")
     end.

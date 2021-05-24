@@ -60,8 +60,6 @@
 -include_lib("kazoo_stdlib/include/kazoo_json.hrl").
 -include_lib("kazoo_amqp/include/kz_api.hrl").
 
--define(CALL_SANITY_CHECK, 30000).
-
 -define(MAX_BRANCH_COUNT, kapps_config:get_integer(?CF_CONFIG_CAT, <<"max_branch_count">>, 50)).
 
 -type callfow_status() :: 'init' | 'running' | 'not_running'.
@@ -256,6 +254,7 @@ callid(Call) ->
     Srv = cf_exe_pid(Call),
     callid(Srv).
 
+%% @doc callback helper for kapps_call
 -spec callid(kz_term:api_binary(), kapps_call:call() | pid()) -> kz_term:ne_binary().
 callid(_, Call) ->
     callid(Call).
@@ -271,6 +270,7 @@ queue_name(Call) ->
 control_queue(Srv) when is_pid(Srv) -> gen_server:call(Srv, 'control_queue_name');
 control_queue(Call) -> control_queue(cf_exe_pid(Call)).
 
+%% @doc callback helper for kapps_call
 -spec control_queue(kz_term:api_binary(), kapps_call:call() | pid()) -> kz_term:ne_binary().
 control_queue(_, Call) -> control_queue(Call).
 

@@ -40,7 +40,7 @@
 -define(KEY_MAX_MESSAGE_LENGTH, <<"max_message_length">>).
 -define(KEY_MIN_MESSAGE_SIZE, <<"min_message_size">>).
 -define(KEY_MAX_BOX_NUMBER_LENGTH, <<"max_box_number_length">>).
--define(KEY_EXTENSION, <<"extension">>).
+
 -define(KEY_MAX_LOGIN_ATTEMPTS, <<"max_login_attempts">>).
 -define(KEY_MAX_PIN_LENGTH, <<"max_pin_length">>).
 -define(KEY_DELETE_AFTER_NOTIFY, <<"delete_after_notify">>).

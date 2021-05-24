@@ -17,8 +17,6 @@
 
 -export([handle/2]).
 
--define(MOD_CONFIG_CAT, <<(?CF_CONFIG_CAT)/binary, ".do_not_disturb">>).
-
 -record(dnd, {enabled = 'false' :: boolean()
              ,jobj = kz_json:new() :: kz_json:object()
              ,account_db :: kz_term:api_binary()

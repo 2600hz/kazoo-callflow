@@ -139,7 +139,6 @@ find_child_in_doc(DocId, Variable, Call) ->
             'undefined'
     end.
 
-
 %%------------------------------------------------------------------------------
 %% @doc Open the document DocId to find the value of the variable which is the
 %% name of the callflow branch.
