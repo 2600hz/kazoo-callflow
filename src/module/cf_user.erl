@@ -27,9 +27,9 @@
 handle(Data, Call) ->
     UserId = kz_json:get_ne_binary_value(<<"id">>, Data),
     case get_endpoints(UserId, Data, Call) of
-        {ok, Endpoints} ->
+        {'ok', Endpoints} ->
             maybe_bridge(Data, Call, Endpoints);
-        {error, Error} ->
+        {'error', Error} ->
             lager:warning("error ~p building endpoint for ~s", [Error, UserId]),
             cf_exe:stop(Call, <<"DESTINATION_OUT_OF_ORDER">>)
     end.
@@ -90,9 +90,10 @@ maybe_handle_bridge_failure(Reason, Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_endpoints(kz_term:api_binary(), kz_json:object(), kapps_call:call()) ->
-          kz_json:objects().
+          {'ok', kz_json:objects()} |
+          {'error', kz_endpoint:build_errors() | 'endpoint_not_configured'}.
 get_endpoints('undefined', _, _) ->
-    {error, endpoint_not_configured};
+    {'error', 'endpoint_not_configured'};
 get_endpoints(UserId, Data, Call) ->
     Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
     kz_endpoint:build(UserId, Params, Call).
@@ -103,6 +104,6 @@ set_context_flags(Call, Data) ->
 
 is_context_flag({K, V}) ->
     case kz_term:is_true(V) of
-        true -> {true, K};
-        false -> false
+        'true' -> {'true', K};
+        'false' -> 'false'
     end.

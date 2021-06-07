@@ -325,8 +325,7 @@ maybe_play_media(Call, User, MediaId) ->
     end.
 
 -spec play_directory_instructions(kapps_call:call(), search_field()) ->
-          {'ok', binary()} |
-          {'error', atom()}.
+          kapps_call_command:collect_digits_return().
 play_directory_instructions(Call, 'first') ->
     play_and_collect(Call, [{'prompt', ?PROMPT_ENTER_PERSON_FIRSTNAME}]);
 play_directory_instructions(Call, 'last') ->
@@ -343,8 +342,7 @@ play_no_users_found(Call) ->
     kapps_call_command:audio_macro([{'prompt', ?PROMPT_NO_RESULTS_FOUND}], Call).
 
 -spec play_and_collect(kapps_call:call(), kapps_call_command:audio_macro_prompts()) ->
-          {'ok', binary()} |
-          {'error', atom()}.
+          kapps_call_command:collect_digits_return().
 play_and_collect(Call, AudioMacro) ->
     play_and_collect(Call, AudioMacro, 1).
 
