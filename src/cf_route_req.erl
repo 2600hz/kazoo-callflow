@@ -63,8 +63,7 @@ handle_req(RouteReq, Props) ->
                            ,boolean()
                            ) -> 'ok'.
 maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch) ->
-    CCVs = kapi_route:custom_channel_vars(RouteReq, kz_json:new()),
-    IsTransfer = kz_json:get_first_defined([<<"Referred-By">>, <<"Redirected-By">>], CCVs) =/= 'undefined',
+    IsTransfer = kapps_call:is_transfer(Call),
 
     maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, IsTransfer).
 
