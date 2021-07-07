@@ -63,6 +63,15 @@ handle_req(RouteReq, Props) ->
                            ,boolean()
                            ) -> 'ok'.
 maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch) ->
+    CCVs = kapi_route:custom_channel_vars(RouteReq, kz_json:new()),
+    IsTransfer = kz_json:get_first_defined([<<"Referred-By">>, <<"Redirected-By">>], CCVs) =/= 'undefined',
+
+    maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, IsTransfer).
+
+maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'true') ->
+    lager:info("request is the result of a transfer, skipping preflow"),
+    maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
+maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'false') ->
     AccountId = kapps_call:account_id(Call),
     case kzd_accounts:fetch(AccountId) of
         {'error', _E} ->
@@ -74,6 +83,7 @@ maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch) ->
                     lager:debug("ignore preflow, not set"),
                     maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
                 PreflowId ->
+                    lager:info("prepending callflow ~s", [PreflowId]),
                     NewCallflow = kzd_callflows:prepend_preflow(Callflow, PreflowId),
                     maybe_reply_to_req(RouteReq, Props, Call, NewCallflow, NoMatch)
             end
