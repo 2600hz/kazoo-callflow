@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc Handler for route requests, responds if Callflows match.
 %%% @author Karl Anderson
 %%%
@@ -63,6 +63,14 @@ handle_req(RouteReq, Props) ->
                            ,boolean()
                            ) -> 'ok'.
 maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch) ->
+    IsTransfer = kapps_call:is_transfer(Call),
+
+    maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, IsTransfer).
+
+maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'true') ->
+    lager:info("request is the result of a transfer, skipping preflow"),
+    maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
+maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'false') ->
     AccountId = kapps_call:account_id(Call),
     case kzd_accounts:fetch(AccountId) of
         {'error', _E} ->
@@ -74,6 +82,7 @@ maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch) ->
                     lager:debug("ignore preflow, not set"),
                     maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
                 PreflowId ->
+                    lager:info("prepending callflow ~s", [PreflowId]),
                     NewCallflow = kzd_callflows:prepend_preflow(Callflow, PreflowId),
                     maybe_reply_to_req(RouteReq, Props, Call, NewCallflow, NoMatch)
             end
