@@ -119,14 +119,15 @@ handle(Data, Call) ->
     case get_directory_listing(kapps_call:account_db(Call), kz_doc:id(DirJObj)) of
         {'ok', Users} ->
             SortBy = get_sort_by(kzd_directories:sort_by(DirJObj, <<"last_name">>)),
-            Users1 = sort_users(Users, SortBy),
-            _ = log(Users1),
+            SortedUsers = sort_users(Users, SortBy),
+            _ = log(SortedUsers),
             State = #directory{search_fields = get_search_fields(kzd_directories:search_fields(DirJObj, <<"both">>))
                               ,min_dtmf = kzd_directories:min_dtmf(DirJObj, 3)
                               ,max_dtmf = kzd_directories:max_dtmf(DirJObj, 0)
                               ,confirm_match = kzd_directories:confirm_match(DirJObj, 'false')
                               ,digits_collected = <<>>
-                              ,users = Users1
+                              ,users = SortedUsers
+                              ,tries_left = 3
                               },
             directory_start(Call, State);
         {'error', 'no_users_in_directory'} ->
@@ -139,22 +140,18 @@ handle(Data, Call) ->
     end.
 
 -spec directory_start(kapps_call:call(), directory()) -> 'ok'.
-directory_start(Call, State) ->
-    directory_start(Call, State, 3).
-
--spec directory_start(kapps_call:call(), directory(), non_neg_integer()) -> 'ok'.
-directory_start(Call, _State, 0) ->
-    lager:error("maximum try to collect digits"),
+directory_start(Call, #directory{tries_left=0}) ->
+    lager:error("exceeded maximum tries to collect digits"),
     _NoopId = kapps_call_command:audio_macro([{'prompt', ?PROMPT_SPECIFY_MINIMUM}
                                              ,{'prompt', ?PROMPT_NO_RESULTS_FOUND}
                                              ]
                                             ,Call
                                             ),
     cf_exe:stop(Call);
-directory_start(Call, State, Loop) ->
+directory_start(Call, State) ->
     _ = kapps_call_command:flush_dtmf(Call),
     case play_directory_instructions(Call, search_fields(State)) of
-        {'ok', <<>>} -> directory_start(Call, State, Loop - 1);
+        {'ok', <<>>} -> directory_start(Call, decr_tries(State));
         {'ok', DTMF} -> collect_digits(Call, State, DTMF);
         {'error', 'channel_hungup'} ->
             lager:debug("failed to collect digits, channel_hungup"),
@@ -164,6 +161,10 @@ directory_start(Call, State, Loop) ->
             cf_exe:stop(Call)
     end.
 
+-spec decr_tries(directory()) -> directory().
+decr_tries(#directory{tries_left=Tries}=State) ->
+    State#directory{tries_left=Tries-1}.
+
 -spec collect_digits(kapps_call:call(), directory(), binary()) -> 'ok'.
 collect_digits(Call, State, DTMF) ->
     case kapps_call_command:collect_digits(100, ?TIMEOUT_DTMF, ?TIMEOUT_DTMF, Call) of
@@ -172,7 +173,7 @@ collect_digits(Call, State, DTMF) ->
             cf_exe:stop(Call);
         {'ok', <<>>} ->
             _NoopId = kapps_call_command:audio_macro([{'prompt', ?PROMPT_SPECIFY_MINIMUM}], Call),
-            directory_start(Call, State);
+            directory_start(Call, decr_tries(State));
         {'ok', <<"0">>} ->
             lager:info("caller chose to return to the main menu"),
             cf_exe:continue(Call);
@@ -186,7 +187,7 @@ maybe_match(Call, State) ->
         [] ->
             lager:info("no users left matching DTMF string"),
             _ = play_no_users_found(Call),
-            directory_start(Call, clear_dtmf(State));
+            directory_start(Call, decr_tries(clear_dtmf(State)));
         [User] ->
             lager:info("one user found: ~s", [full_name(User)]),
             case maybe_confirm_match(Call, User, confirm_match(State)) of
@@ -195,7 +196,7 @@ maybe_match(Call, State) ->
                     route_to_match(Call, callflow(Call, User));
                 'false' ->
                     lager:info("match denied, starting over"),
-                    directory_start(Call, clear_dtmf(State))
+                    directory_start(Call, decr_tries(clear_dtmf(State)))
             end;
         Users ->
             lager:info("more than one match found"),
@@ -210,7 +211,7 @@ matches_menu(Call, State, Users) ->
 maybe_match_users(Call, State, [], _) ->
     lager:info("failed to match any users, back to the beginning"),
     _ = play_no_users(Call),
-    directory_start(Call, clear_dtmf(State));
+    directory_start(Call, decr_tries(clear_dtmf(State)));
 maybe_match_users(Call, State, [U|Us], MatchNum) ->
     case maybe_match_user(Call, U, MatchNum, 3) of
         'route' ->
@@ -220,7 +221,7 @@ maybe_match_users(Call, State, [U|Us], MatchNum) ->
             maybe_match_users(Call, State, Us, MatchNum+1);
         'start_over' ->
             lager:info("starting over"),
-            directory_start(Call, clear_dtmf(State));
+            directory_start(Call, decr_tries(clear_dtmf(State)));
         'invalid' ->
             lager:info("invalid key press"),
             _ = play_invalid(Call),
@@ -324,8 +325,7 @@ maybe_play_media(Call, User, MediaId) ->
     end.
 
 -spec play_directory_instructions(kapps_call:call(), search_field()) ->
-          {'ok', binary()} |
-          {'error', atom()}.
+          kapps_call_command:collect_digits_return().
 play_directory_instructions(Call, 'first') ->
     play_and_collect(Call, [{'prompt', ?PROMPT_ENTER_PERSON_FIRSTNAME}]);
 play_directory_instructions(Call, 'last') ->
@@ -342,8 +342,7 @@ play_no_users_found(Call) ->
     kapps_call_command:audio_macro([{'prompt', ?PROMPT_NO_RESULTS_FOUND}], Call).
 
 -spec play_and_collect(kapps_call:call(), kapps_call_command:audio_macro_prompts()) ->
-          {'ok', binary()} |
-          {'error', atom()}.
+          kapps_call_command:collect_digits_return().
 play_and_collect(Call, AudioMacro) ->
     play_and_collect(Call, AudioMacro, 1).
 
@@ -402,17 +401,28 @@ get_search_fields(_) -> 'last'.
           {'ok', directory_users()} |
           {'error', any()}.
 get_directory_listing(Db, DirId) ->
-    case kz_datamgr:get_results(Db, ?DIR_DOCS_VIEW, [{'startkey', [DirId]}, {'endkey', [DirId, kz_json:new()]}, 'include_docs']) of
+    Options = [{'startkey', [DirId]}
+              ,{'endkey', [DirId, kz_json:new()]}
+              ,'include_docs'
+              ],
+    case kz_datamgr:get_results(Db, ?DIR_DOCS_VIEW, Options) of
         {'ok', []} ->
             lager:info("no users have been assigned to directory ~s", [DirId]),
             %% play no users in this directory
             {'error', 'no_users_in_directory'};
         {'ok', Users} ->
-            {'ok', [get_directory_user(kz_json:get_json_value(<<"doc">>, U), kz_json:get_value(<<"value">>, U)) || U <- Users]};
+            {'ok', users_to_listing(Users)};
         {'error', _E}=E ->
             lager:info("failed to lookup users for directory ~s: ~p", [DirId, _E]),
             E
     end.
+
+users_to_listing(Users) ->
+    [get_directory_user(kz_json:get_json_value(<<"doc">>, U)
+                       ,kz_json:get_ne_binary_value(<<"value">>, U)
+                       )
+     || U <- Users
+    ].
 
 -spec get_directory_user(kzd_users:doc(), kz_term:ne_binary()) -> directory_user().
 get_directory_user(UserDoc, CallflowId) ->

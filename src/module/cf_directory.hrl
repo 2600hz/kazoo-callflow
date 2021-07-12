@@ -21,6 +21,7 @@
                    ,digits_collected = <<>> :: binary()
                    ,users = [] :: directory_users()
                    ,curr_users = [] :: directory_users()
+                   ,tries_left = 3 :: non_neg_integer()
                    }).
 -type directory() :: #directory{}.
 

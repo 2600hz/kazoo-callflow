@@ -107,6 +107,7 @@ maybe_normalize_number(EndpointJObj, Call) ->
     AccountId = kapps_call:account_id(Call),
     DialPlan = kz_json:get_json_value(<<"dial_plan">>, EndpointJObj, kz_json:new()),
     Request = find_request(Call),
+
     case kz_json:is_empty(DialPlan)
         andalso kapps_call:kvs_fetch('cf_capture_group', Call) =:= 'undefined'
     of
@@ -134,7 +135,7 @@ find_request(Call) ->
 enforce_closed_groups(EndpointJObj, Call) ->
     case get_callee_extension_info(Call) of
         'undefined' ->
-            lager:info("dialed number is not an extension, using classification restrictions", []),
+            lager:info("dialed number is not an extension, using classification restrictions"),
             maybe_classification_restriction(EndpointJObj, Call);
         {<<"user">>, CalleeId} ->
             lager:info("dialed number is user ~s extension, checking groups", [CalleeId]),
