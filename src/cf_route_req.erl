@@ -21,9 +21,9 @@
        ,kapps_account_config:get(AccountId, <<"metaflows">>, <<"default_metaflow">>, 'false')
        ).
 
--define(DEFAULT_ROUTE_WIN_TIMEOUT, 3000).
+-define(DEFAULT_ROUTE_WIN_TIMEOUT_MS, 3 * ?MILLISECONDS_IN_SECOND).
 -define(ROUTE_WIN_TIMEOUT_KEY, <<"route_win_timeout">>).
--define(ROUTE_WIN_TIMEOUT, kapps_config:get_integer(?CF_CONFIG_CAT, ?ROUTE_WIN_TIMEOUT_KEY, ?DEFAULT_ROUTE_WIN_TIMEOUT)).
+-define(ROUTE_WIN_TIMEOUT, kapps_config:get_integer(?CF_CONFIG_CAT, ?ROUTE_WIN_TIMEOUT_KEY, ?DEFAULT_ROUTE_WIN_TIMEOUT_MS)).
 
 -spec handle_req(kapi_route:req(), kz_term:proplist()) -> 'ok'.
 handle_req(RouteReq, Props) ->
@@ -38,24 +38,27 @@ handle_req(RouteReq, Props) ->
     case is_binary(kapps_call:account_id(Call))
         andalso callflow_should_respond(Call)
     of
-        'true' ->
-            lager:info("received request ~s asking if callflows can route the call to ~s"
-                      ,[kapi_route:fetch_id(RouteReq), kapps_call:request_user(Call)]
-                      ),
-            AllowNoMatch = allow_no_match(Call),
-            case cf_flow:lookup(Call) of
-                %% if NoMatch is false then allow the callflow or if it is true and we are able allowed
-                %% to use it for this call
-                {'ok', Flow, NoMatch} when (not NoMatch)
-                                           orelse AllowNoMatch ->
-                    maybe_prepend_preflow(RouteReq, Props, Call, Flow, NoMatch);
-                {'ok', _, 'true'} ->
-                    lager:info("only available callflow is a nomatch for a unauthorized call", []);
-                {'error', R} ->
-                    lager:info("unable to find callflow ~p", [R])
-            end;
+        'true' -> handle_req(RouteReq, Props, Call);
         'false' ->
             lager:debug("callflow not handling fetch-id ~s", [kapi_route:fetch_id(RouteReq)])
+    end.
+
+handle_req(RouteReq, Props, Call) ->
+    lager:info("received request ~s asking if callflows can route the call to ~s"
+              ,[kapi_route:fetch_id(RouteReq), kapps_call:request_user(Call)]
+              ),
+    AllowNoMatch = allow_no_match(Call),
+    case cf_flow:lookup(Call) of
+        {'ok', Flow, 'false'} ->
+            maybe_prepend_preflow(RouteReq, Props, Call, Flow, 'false');
+        %% if callflow is the no_match, and we are able allowed to use it for this
+        %% call, proceed
+        {'ok', Flow, 'true'} when AllowNoMatch ->
+            maybe_prepend_preflow(RouteReq, Props, Call, Flow, 'true');
+        {'ok', _Flow, 'true'} ->
+            lager:info("only available callflow is a nomatch for a unauthorized call", []);
+        {'error', R} ->
+            lager:info("unable to find callflow ~p", [R])
     end.
 
 -spec maybe_prepend_preflow(kapi_route:req(), kz_term:proplist()
@@ -63,29 +66,42 @@ handle_req(RouteReq, Props) ->
                            ,boolean()
                            ) -> 'ok'.
 maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch) ->
+    IsTransfer = kapps_call:is_transfer(Call),
+
+    maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, IsTransfer).
+
+maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'true') ->
+    lager:info("request is the result of a transfer, skipping preflow"),
+    maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
+maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'false') ->
     AccountId = kapps_call:account_id(Call),
     case kzd_accounts:fetch(AccountId) of
         {'error', _E} ->
             lager:warning("could not open account doc ~s : ~p", [AccountId, _E]),
             maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
         {'ok', AccountDoc} ->
-            case kzd_accounts:preflow_id(AccountDoc) of
-                'undefined' ->
-                    lager:debug("ignore preflow, not set"),
-                    maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
-                PreflowId ->
-                    NewCallflow = kzd_callflows:prepend_preflow(Callflow, PreflowId),
-                    maybe_reply_to_req(RouteReq, Props, Call, NewCallflow, NoMatch)
-            end
+            maybe_prepend_account_preflow(RouteReq, Props, Call, Callflow, NoMatch, AccountDoc)
+    end.
+
+maybe_prepend_account_preflow(RouteReq, Props, Call, Callflow, NoMatch, AccountDoc) ->
+    case kzd_accounts:preflow_id(AccountDoc) of
+        'undefined' ->
+            lager:debug("ignore preflow, not set"),
+            maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
+        PreflowId ->
+            lager:info("prepending callflow ~s", [PreflowId]),
+            NewCallflow = kzd_callflows:prepend_preflow(Callflow, PreflowId),
+            maybe_reply_to_req(RouteReq, Props, Call, NewCallflow, NoMatch)
     end.
 
 -spec maybe_reply_to_req(kapi_route:req(), kz_term:proplist()
                         ,kapps_call:call(), kzd_callflows:doc(), boolean()) -> 'ok'.
 maybe_reply_to_req(RouteReq, Props, Call, Flow, NoMatch) ->
-    lager:info("callflow ~s in ~s satisfies request for ~s", [kz_doc:id(Flow)
-                                                             ,kapps_call:account_id(Call)
-                                                             ,kapps_call:request_user(Call)
-                                                             ]),
+    lager:info("callflow ~s in ~s satisfies request for ~s"
+              ,[kz_doc:id(Flow)
+               ,kapps_call:account_id(Call)
+               ,kapps_call:request_user(Call)
+               ]),
     case cf_util:token_check(Call, Flow) of
         'false' -> 'ok';
         'true' ->
@@ -124,12 +140,12 @@ is_authz_context(Call, 'true') ->
 
 -spec allow_no_match_type(kapps_call:call()) -> boolean().
 allow_no_match_type(Call) ->
-    case kapps_call:authorizing_type(Call) of
-        'undefined' -> 'false';
-        <<"resource">> -> 'false';
-        <<"sys_info">> -> 'false';
-        _Type ->
-            lager:debug("allowing no-match for authz type ~s", [_Type]),
+    DeniedTypes = ['undefined', kzd_resources:type(), kzd_connectivity:type()],
+
+    case lists:member(kapps_call:authorizing_type(Call), DeniedTypes) of
+        'true' -> 'false';
+        'false' ->
+            lager:debug("allowing no-match for authz type ~s", [kapps_call:authorizing_type(Call)]),
             'true'
     end.
 
@@ -295,7 +311,7 @@ get_redirected_by(Call) ->
 is_valid_endpoint('undefined', _) -> 'false';
 is_valid_endpoint(Contact, Call) ->
     case endpoint_from_sip_params(Contact) of
-        undefined -> false;
+        'undefined' -> 'false';
         EndpointId ->
             case kz_datamgr:open_cache_doc(kapps_call:account_db(Call), EndpointId) of
                 {'ok', _Endpoint} ->
@@ -306,10 +322,10 @@ is_valid_endpoint(Contact, Call) ->
     end.
 
 -spec endpoint_from_sip_params(kz_term:api_ne_binary()) -> kz_term:api_ne_binary().
-endpoint_from_sip_params(undefined) -> undefined;
+endpoint_from_sip_params('undefined') -> 'undefined';
 endpoint_from_sip_params(Contact) ->
     case kzsip_uri:uris(Contact) of
         [#uri{ext_opts=Opts1, opts=Opts2}] ->
             props:get_value(<<"endpoint_id">>, Opts1 ++ Opts2);
-        _Else -> undefined
+        _Else -> 'undefined'
     end.

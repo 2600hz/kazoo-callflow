@@ -74,6 +74,7 @@
     - 'applications/callflow/doc/skel.md'
     - 'applications/callflow/doc/sleep.md'
     - 'applications/callflow/doc/temporal_route.md'
+    - 'applications/callflow/doc/tones.md'
     - 'applications/callflow/doc/transfer.md'
     - 'applications/callflow/doc/tts.md'
     - 'applications/callflow/doc/user.md'
