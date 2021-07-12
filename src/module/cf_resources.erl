@@ -346,7 +346,7 @@ maybe_default_asserted_identity(Endpoint, Call) ->
 -spec should_set_asserted_on_call_fwd(kz_endpoint:endpoint(), kapps_call:call()) -> boolean().
 should_set_asserted_on_call_fwd(Endpoint, Call) ->
     not (kapps_call:is_call_forward(Call)
-         andalso kzd_devices:call_forward_keep_caller_id(Endpoint)
+         andalso kzd_call_forward:keep_caller_id(kzd_devices:call_forward(Endpoint, kz_json:new()))
         ).
 
 -spec get_asserted_default_name(kz_json:object(), kapps_call:call()) -> kz_term:api_binary().
