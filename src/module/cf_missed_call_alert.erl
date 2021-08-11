@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2017-2020, 2600Hz
+%%% @copyright (C) 2017-2021, 2600Hz
 %%% @doc Sends a notification for missed call.
 %%%
 %%% <h4>Data options:</h4>
@@ -106,8 +106,8 @@ send_missed_alert(Call, Notify, Emails) ->
               ,{<<"To-User">>, kapps_call:to_user(Call)}
               ,{<<"To-Realm">>, kapps_call:to_realm(Call)}
               ,{<<"Account-ID">>, kapps_call:account_id(Call)}
-              ,{<<"Caller-ID-Number">>, kapps_call:caller_id_number(Call)}
-              ,{<<"Caller-ID-Name">>, kapps_call:caller_id_name(Call)}
+              ,{<<"Caller-ID-Number">>, get_caller_id_number(Call)}
+              ,{<<"Caller-ID-Name">>, get_caller_id_name(Call)}
               ,{<<"Timestamp">>, kz_time:now_s()}
               ,{<<"Call-ID">>, kapps_call:call_id_direct(Call)}
               ,{<<"Notify">>, Notify}
@@ -118,6 +118,30 @@ send_missed_alert(Call, Notify, Emails) ->
               ]
              ),
     kapps_notify_publisher:cast(Props, fun kapi_notifications:publish_missed_call/1).
+
+%%------------------------------------------------------------------------------
+%% @doc Get Caller ID Name.
+%% @end
+%%------------------------------------------------------------------------------
+-spec get_caller_id_name(kapps_call:call()) -> kz_term:ne_binary().
+get_caller_id_name(Call) ->
+    CallerIdName = kapps_call:caller_id_name(Call),
+    case kapps_call:kvs_fetch('prepend_cid_name', Call) of
+        'undefined' -> CallerIdName;
+        Prepend ->
+            Pre = <<(kz_term:to_binary(Prepend))/binary, CallerIdName/binary>>,
+            kz_binary:truncate_right(Pre, kzd_schema_caller_id:external_name_max_length())
+    end.
+
+-spec get_caller_id_number(kapps_call:call()) -> kz_term:ne_binary().
+get_caller_id_number(Call) ->
+    CallerIdNumber = kapps_call:caller_id_number(Call),
+    case kapps_call:kvs_fetch('prepend_cid_number', Call) of
+        'undefined' -> CallerIdNumber;
+        Prepend ->
+            Pre = <<(kz_term:to_binary(Prepend))/binary, CallerIdNumber/binary>>,
+            kz_binary:truncate_right(Pre, kzd_schema_caller_id:external_name_max_length())
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc Try to find email addressed using module's data object
