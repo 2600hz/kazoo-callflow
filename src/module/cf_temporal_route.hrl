@@ -1,7 +1,5 @@
 -ifndef(CF_TEMPORAL_ROUTE_HRL).
 
--define(FIND_RULES, <<>>).
-
 -type improper_month() :: non_neg_integer().
 -type improper_day() :: non_neg_integer().
 -type improper_date() :: {kz_time:year(), improper_month(), improper_day()}.

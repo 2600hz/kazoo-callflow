@@ -78,25 +78,18 @@
 
 -define(DIR_DOCS_VIEW, <<"directories/users_listing">>).
 
--define(FIELDS, [<<"last_name">>, <<"first_name">>]). %% what fields to convert/keep for searching
 -define(DTMF_ACCEPT_MATCH, <<"1">>).
--define(DTMF_REJECT_MATCH, <<"3">>).
 
 -define(DTMF_RESULT_CONNECT, <<"1">>).
 -define(DTMF_RESULT_NEXT, <<"2">>).
 -define(DTMF_RESULT_START, <<"3">>).
 
--define(TIMEOUT_MIN_DTMF, 5 * ?MILLISECONDS_IN_SECOND).
 -define(TIMEOUT_DTMF, 2 * ?MILLISECONDS_IN_SECOND).
--define(TIMEOUT_ENDPOINT, ?DEFAULT_TIMEOUT_S).
 
 -define(PROMPT_ENTER_PERSON_LASTNAME, <<"dir-enter_person_lastname">>). %% Please enter the first few letters of the person's lastname
 -define(PROMPT_ENTER_PERSON_FIRSTNAME, <<"dir-enter_person_firstname">>). %% Please enter the first few letters of the person's firstname
 -define(PROMPT_ENTER_PERSON_NAME, <<"dir-enter_person_name">>). %% Please enter the first few letters of the person's name
--define(PROMPT_FIRSTNAME, <<"dir-first_name">>). %% first name
--define(PROMPT_LASTNAME, <<"dir-last_name">>). %% last name
 -define(PROMPT_SPECIFY_MINIMUM, <<"dir-specify_minimum">>). %% You need to specify a minimum of two digits
--define(PROMPT_LETTERS_OF_NAME, <<"dir-letters_of_person_name">>). %% letters of the person's name
 -define(PROMPT_NO_RESULTS_FOUND, <<"dir-no_results_found">>). %% No match found
 -define(PROMPT_NO_MORE_RESULTS, <<"dir-no_more_results">>). %% no more results
 -define(PROMPT_CONFIRM_MENU, <<"dir-confirm_menu">>). %% press 1. to start over press 3
