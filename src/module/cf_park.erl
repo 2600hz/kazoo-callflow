@@ -106,7 +106,7 @@ handle_nomatch_with_empty_referred_to(Data, Call, PresenceType, ParkedCalls, Slo
             lager:info("action is to retrieve a parked call"),
             case retrieve(SlotNumber, Call) of
                 {'ok', _} ->
-                    cf_exe:transfer(Call);
+                    cf_exe:transfer(maybe_record_call(Call));
                 _Else ->
                     _ = kapps_call_command:b_answer(Call),
                     _ = kapps_call_command:b_prompt(<<"park-no_caller">>, Call),
@@ -119,8 +119,59 @@ handle_nomatch_with_empty_referred_to(Data, Call, PresenceType, ParkedCalls, Slo
                     Slot = create_slot(cf_exe:callid(Call), PresenceType, SlotNumber, Data, 'true', Call),
                     park_call(SlotNumber, Slot, ParkedCalls, 'undefined', Data, Call);
                 {'ok', _} ->
-                    cf_exe:transfer(Call)
+                    cf_exe:transfer(maybe_record_call(Call))
             end
+    end.
+
+-spec maybe_record_call(kapps_call:call()) -> kapps_call:call().
+maybe_record_call(Call) ->
+    AccountId = kapps_call:account_id(Call),
+    %% Using kzd_devices:fetch/2 here instead of kz_endpoint:get/1 because the latter adds default
+    %% values when endpoint's call_recording is not configured and in this case that scenario needs
+    %% to be handle different.
+    {'ok', Endpoint} = kzd_devices:fetch(AccountId, kapps_call:authorizing_id(Call)),
+    {'ok', User} = kzd_users:fetch(AccountId, kapps_call:owner_id(Call)),
+    {'ok', Account} = kzd_accounts:fetch(AccountId),
+    EndpointRec = kzd_devices:call_recording(Endpoint, kz_json:new()),
+    UserRec = kzd_users:call_recording(User, kz_json:new()),
+    AccountRec = kzd_accounts:call_recording_account(Account, kz_json:new()),
+    case maybe_record_call(Call, EndpointRec, UserRec, AccountRec) of
+        'true' ->
+            lager:debug("recording because device, user, or account are configured to record calls"),
+            kapps_call:start_recording(Call);
+        'false' ->
+            lager:debug("not recording this time"),
+            Call
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc The logic implemented on this function is like this: device > user > account. Which means,
+%% device takes precedence over user and user takes precedence over account. In this order of ideas,
+%% the code only checks user's configuration if device's configuration is not set, same logic for user.
+%% For example:
+%% - If device is NOT configured to record calls, check user, if user is NOT configured to record
+%%   calls, check account.
+%% - If device has call_recording configuration and call recording is disabled, do not record call.
+%%   If it is enabled, then record the call. Same logic for user up to account.
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_record_call(kapps_call:call(), kz_json:object(), kz_json:object(), kz_json:object()) -> boolean().
+maybe_record_call(Call, EndpointRec, UserRec, AccountRec) ->
+    Key = fun(Dir) -> [Dir, kapps_call:inception_type(Call), <<"enabled">>] end,
+    AnyKey = Key(<<"any">>), %% any
+    DirKey = Key(kapps_call:direction(Call)), %% inbound, outbound
+    IsEnabled = fun(RecJObj) ->
+                        case kz_json:get_value(AnyKey, RecJObj, 'undefined') of
+                            'undefined' -> kz_json:get_value(DirKey, RecJObj, 'undefined');
+                            Else -> Else
+                        end
+                end,
+    case {IsEnabled(EndpointRec), IsEnabled(UserRec), IsEnabled(AccountRec)} of
+        {'false', _, _} -> 'false';
+        {'true', _, _} -> 'true';
+        {'undefined', 'false', _} -> 'false';
+        {'undefined', 'true', _} -> 'true';
+        {'undefined', 'undefined', AccountEnabled} -> kz_term:is_true(AccountEnabled)
     end.
 
 -spec direct_park(kz_term:ne_binary(), kz_json:object(), kz_json:object(), kz_json:object(), kapps_call:call()) -> 'ok'.
