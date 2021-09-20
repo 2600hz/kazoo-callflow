@@ -160,19 +160,20 @@ maybe_record_call(Call, EndpointRec, UserRec, AccountRec) ->
     Key = fun(Dir) -> [Dir, kapps_call:inception_type(Call), <<"enabled">>] end,
     AnyKey = Key(<<"any">>), %% any
     DirKey = Key(kapps_call:direction(Call)), %% inbound, outbound
-    IsEnabled = fun(RecJObj) ->
-                        case kz_json:get_value(AnyKey, RecJObj, 'undefined') of
-                            'undefined' -> kz_json:get_value(DirKey, RecJObj, 'undefined');
-                            Else -> Else
-                        end
-                end,
-    case {IsEnabled(EndpointRec), IsEnabled(UserRec), IsEnabled(AccountRec)} of
+    case {is_recording_enabled(AnyKey, DirKey, EndpointRec)
+         ,is_recording_enabled(AnyKey, DirKey, UserRec)
+         ,is_recording_enabled(AnyKey, DirKey, AccountRec)
+         } of
         {'false', _, _} -> 'false';
         {'true', _, _} -> 'true';
         {'undefined', 'false', _} -> 'false';
         {'undefined', 'true', _} -> 'true';
         {'undefined', 'undefined', AccountEnabled} -> kz_term:is_true(AccountEnabled)
     end.
+
+-spec is_recording_enabled([kz_term:ne_binary(), ...], kz_term:ne_binary(), kz_json:object()) -> boolean().
+is_recording_enabled(AnyKey, DirKey, RecJObj) ->
+    kz_json:get_first_defined([AnyKey, DirKey], RecJObj).
 
 -spec direct_park(kz_term:ne_binary(), kz_json:object(), kz_json:object(), kz_json:object(), kapps_call:call()) -> 'ok'.
 direct_park(SlotNumber, Slot, ParkedCalls, Data, Call) ->
