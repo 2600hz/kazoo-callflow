@@ -200,7 +200,10 @@ is_recording_enabled(AnyKey, DirKey, RecJObj) ->
 direct_park(SlotNumber, Slot, ParkedCalls, Data, Call) ->
     MaxSlotNumber = kz_json:get_integer_value(?MAX_SLOT_NUMBER_KEY, Data),
     case save_slot(SlotNumber, MaxSlotNumber, Slot, ParkedCalls, Call) of
-        {'ok', _} -> parked_call(SlotNumber, Slot, Data, Call);
+        {'ok', _} ->
+            _ = kapps_call_command:prompt(<<"park-call_placed_in_spot">>, Call),
+            _ = kapps_call_command:say(kz_term:to_binary(SlotNumber), Call),
+            parked_call(SlotNumber, Slot, Data, Call);
         {'error', ?MAX_SLOT_EXCEEDED} ->
             cf_exe:continue(kz_term:to_upper_binary(?MAX_SLOT_EXCEEDED), Call);
         {'error', _Reason} ->
