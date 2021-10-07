@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -464,7 +464,9 @@ apply_dialplan(Number, DialPlan) ->
     end.
 
 -spec maybe_apply_dialplan(kz_json:path(), kz_json:object(), kz_term:ne_binary()) -> kz_term:ne_binary().
-maybe_apply_dialplan([], _, Number) -> Number;
+maybe_apply_dialplan([], _, Number) ->
+    lager:info("no dialplans affect number ~s", [Number]),
+    Number;
 maybe_apply_dialplan([<<"system">>], DialPlan, Number) ->
     SystemDialPlans = load_system_dialplans(kz_json:get_value(<<"system">>, DialPlan)),
     SystemRegexs = lists:sort(kz_json:get_keys(SystemDialPlans)),
@@ -477,25 +479,32 @@ maybe_apply_dialplan([Key|_]=Keys, DialPlan, Number) ->
         Regex -> apply_dialplan(Regex, Keys, DialPlan, Number)
     end.
 
--spec apply_dialplan(kz_term:ne_binary(), kz_json:path(), kz_json:object(), kz_term:ne_binary()) -> kz_term:ne_binary().
+-spec apply_dialplan(kz_term:ne_binary(), kz_json:path(), kz_json:object(), kz_term:ne_binary()) ->
+          kz_term:ne_binary().
 apply_dialplan(Regex, [Key|Keys], DialPlan, Number) ->
-    case re:run(Number, Regex, [{'capture', 'all', 'binary'}]) of
+    case re:run(Number, Regex, [{'capture', 'all_but_first', 'binary'}]) of
         'nomatch' ->
             maybe_apply_dialplan(Keys, DialPlan, Number);
-        'match' ->
+        {'match', []} ->
+            lager:info("regex ~s matched number ~s", [Regex, Number]),
             Number;
         {'match', Captures} ->
             Root = lists:last(Captures),
             Prefix = kz_json:get_binary_value([Key, <<"prefix">>], DialPlan, <<>>),
             Suffix = kz_json:get_binary_value([Key, <<"suffix">>], DialPlan, <<>>),
             N = <<Prefix/binary, Root/binary, Suffix/binary>>,
-            case kz_json:get_value([Key, <<"dialplan">>], DialPlan) of
-                'undefined' -> maybe_apply_dialplan(Keys, DialPlan, N);
-                InnerPlan -> InnerRegexs = kz_json:get_keys(InnerPlan),
-                             N1 = maybe_apply_dialplan(InnerRegexs, InnerPlan, N),
-                             maybe_apply_dialplan(Keys, DialPlan, N1)
-            end
+            lager:info("applied dialplan ~s: ~s / ~s / ~s", [Regex, Prefix, Root, Suffix]),
+
+            InnerDialplan = kz_json:get_value([Key, <<"dialplan">>], DialPlan),
+            maybe_apply_inner_dialplan(Keys, DialPlan, N, InnerDialplan)
     end.
+
+maybe_apply_inner_dialplan(Keys, Dialplan, N, 'undefined') ->
+    maybe_apply_dialplan(Keys, Dialplan, N);
+maybe_apply_inner_dialplan(Keys, Dialplan, N, InnerPlan) ->
+    InnerRegexs = kz_json:get_keys(InnerPlan),
+    N1 = maybe_apply_dialplan(InnerRegexs, InnerPlan, N),
+    maybe_apply_dialplan(Keys, Dialplan, N1).
 
 -spec load_system_dialplans(kz_term:ne_binaries()) -> kz_json:object().
 load_system_dialplans(Names) ->
