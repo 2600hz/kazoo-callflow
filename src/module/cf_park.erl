@@ -171,7 +171,7 @@ maybe_record_call(Call, EndpointRec, UserRec, AccountRec) ->
         {'undefined', 'undefined', AccountEnabled} -> kz_term:is_true(AccountEnabled)
     end.
 
--spec is_recording_enabled([kz_term:ne_binary(), ...], kz_term:ne_binary(), kz_json:object()) -> boolean().
+-spec is_recording_enabled([kz_term:ne_binary(), ...], kz_term:ne_binary(), kz_json:object()) -> boolean() | 'undefined'.
 is_recording_enabled(AnyKey, DirKey, RecJObj) ->
     kz_json:get_first_defined([AnyKey, DirKey], RecJObj).
 
