@@ -135,7 +135,7 @@ maybe_record_call(Call) ->
     EndpointRec = kzd_devices:call_recording(Endpoint, kz_json:new()),
     UserRec = kzd_users:call_recording(User, kz_json:new()),
     AccountRec = kzd_accounts:call_recording_account(Account, kz_json:new()),
-    case maybe_record_call(Call, EndpointRec, UserRec, AccountRec) of
+    case maybe_record_call([EndpointRec, UserRec, AccountRec], Call) of
         'true' ->
             lager:debug("recording because device, user, or account are configured to record calls"),
             kapps_call:start_recording(Call);
@@ -155,20 +155,17 @@ maybe_record_call(Call) ->
 %%   If it is enabled, then record the call. Same logic for user up to account.
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_record_call(kapps_call:call(), kz_json:object(), kz_json:object(), kz_json:object()) -> boolean().
-maybe_record_call(Call, EndpointRec, UserRec, AccountRec) ->
-    Key = fun(Dir) -> [Dir, kapps_call:inception_type(Call), <<"enabled">>] end,
-    AnyKey = Key(<<"any">>), %% any
-    DirKey = Key(kapps_call:direction(Call)), %% inbound, outbound
-    case {is_recording_enabled(AnyKey, DirKey, EndpointRec)
-         ,is_recording_enabled(AnyKey, DirKey, UserRec)
-         ,is_recording_enabled(AnyKey, DirKey, AccountRec)
-         } of
-        {'false', _, _} -> 'false';
-        {'true', _, _} -> 'true';
-        {'undefined', 'false', _} -> 'false';
-        {'undefined', 'true', _} -> 'true';
-        {'undefined', 'undefined', AccountEnabled} -> kz_term:is_true(AccountEnabled)
+-spec maybe_record_call(kz_json:objects(), kapps_call:call()) -> boolean().
+maybe_record_call(RecJObjs, Call) ->
+    InceptionType = kapps_call:inception_type(Call),
+    AnyKey = [<<"any">>, InceptionType, <<"enabled">>], %% any
+    DirKey = [kapps_call:direction(Call), InceptionType, <<"enabled">>], %% inbound, outbound
+    maybe_record_call(RecJObjs, AnyKey, DirKey).
+
+maybe_record_call([RecJObj | RecJObjs], AnyKey, DirKey) ->
+    case is_recording_enabled(AnyKey, DirKey, RecJObj) of
+        'undefined' -> maybe_record_call(RecJObjs, AnyKey, DirKey);
+        MaybeEnabled -> kz_term:is_true(MaybeEnabled)
     end.
 
 -spec is_recording_enabled([kz_term:ne_binary(), ...], kz_term:ne_binary(), kz_json:object()) -> boolean() | 'undefined'.
