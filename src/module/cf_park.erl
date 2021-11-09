@@ -132,9 +132,9 @@ maybe_record_call(Call) ->
     {'ok', Endpoint} = kzd_devices:fetch(AccountId, kapps_call:authorizing_id(Call)),
     {'ok', User} = kzd_users:fetch(AccountId, kapps_call:owner_id(Call)),
     {'ok', Account} = kzd_accounts:fetch(AccountId),
-    EndpointRec = kzd_devices:call_recording(Endpoint, kz_json:new()),
-    UserRec = kzd_users:call_recording(User, kz_json:new()),
-    AccountRec = kzd_accounts:call_recording_account(Account, kz_json:new()),
+    EndpointRec = add_debug_info(kzd_devices:call_recording(Endpoint, kz_json:new()), Endpoint),
+    UserRec = add_debug_info(kzd_users:call_recording(User, kz_json:new()), User),
+    AccountRec = add_debug_info(kzd_accounts:call_recording_account(Account, kz_json:new()), Account),
     case maybe_record_call([EndpointRec, UserRec, AccountRec], Call) of
         'true' ->
             lager:debug("recording because device, user, or account are configured to record calls"),
@@ -143,6 +143,20 @@ maybe_record_call(Call) ->
             lager:debug("not recording this time"),
             Call
     end.
+
+%%------------------------------------------------------------------------------
+%% @doc This function adds debugging information that will later be used within
+%% `maybe_record_call/3' function to tell whether the given JObj has call_recording
+%% enabled or not. That should ease debugging call_recording issues in the future.
+%% @end
+%%------------------------------------------------------------------------------
+-spec add_debug_info(kz_json:object(), kz_doc:doc()) -> kz_json:object().
+add_debug_info(RecJObj, Doc) ->
+    kz_doc:setters(RecJObj
+                  ,[{fun kz_doc:set_id/2, kz_doc:id(Doc)}
+                   ,{fun kz_doc:set_type/2, kz_doc:type(Doc)}
+                   ]
+                  ).
 
 %%------------------------------------------------------------------------------
 %% @doc The logic implemented on this function is like this: device > user > account. Which means,
@@ -156,19 +170,34 @@ maybe_record_call(Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec maybe_record_call(kz_json:objects(), kapps_call:call()) -> boolean().
+maybe_record_call([], _Call) ->
+    lager:debug("not recording configuration found for endpoint, user, or account"),
+    'false';
 maybe_record_call(RecJObjs, Call) ->
+    lager:debug("checking call recording configuration for ~p objects", [length(RecJObjs)]),
     InceptionType = kapps_call:inception_type(Call),
     AnyKey = [<<"any">>, InceptionType, <<"enabled">>], %% any
     DirKey = [kapps_call:direction(Call), InceptionType, <<"enabled">>], %% inbound, outbound
     maybe_record_call(RecJObjs, AnyKey, DirKey).
 
+-spec maybe_record_call(kz_json:objects(), kz_json:path(), kz_json:path()) -> boolean().
+maybe_record_call([], _AnyKey, _DirKey) ->
+    lager:debug("none of the provided objects have call_recording configured"),
+    'false';
 maybe_record_call([RecJObj | RecJObjs], AnyKey, DirKey) ->
+    DocType = kz_doc:type(RecJObj),
+    DocId = kz_doc:id(RecJObj),
     case is_recording_enabled(AnyKey, DirKey, RecJObj) of
-        'undefined' -> maybe_record_call(RecJObjs, AnyKey, DirKey);
-        MaybeEnabled -> kz_term:is_true(MaybeEnabled)
+        'undefined' ->
+            lager:debug("call recording not configured for ~s ~s", [DocType, DocId]),
+            maybe_record_call(RecJObjs, AnyKey, DirKey);
+        MaybeEnabled ->
+            Ret = kz_term:is_true(MaybeEnabled),
+            lager:debug("is call recording enabled for ~s ~s?: ~p", [DocType, DocId, Ret]),
+            Ret
     end.
 
--spec is_recording_enabled([kz_term:ne_binary(), ...], kz_term:ne_binary(), kz_json:object()) -> boolean() | 'undefined'.
+-spec is_recording_enabled(kz_json:path(), kz_json:path(), kz_json:object()) -> kz_term:api_boolean().
 is_recording_enabled(AnyKey, DirKey, RecJObj) ->
     kz_json:get_first_defined([AnyKey, DirKey], RecJObj).
 
