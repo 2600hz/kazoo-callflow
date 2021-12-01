@@ -14,7 +14,7 @@
 
 %% API
 -export([start_link/1]).
--export([amqp_send/3, amqp_call/4]).
+-export([amqp_send/3, amqp_send/4, amqp_call/4]).
 -export([get_call/1, set_call/1]).
 -export([callid/1, callid/2]).
 -export([queue_name/1]).
@@ -316,6 +316,12 @@ amqp_send(Srv, API, PubFun) when is_pid(Srv), is_function(PubFun, 1) ->
 amqp_send(Call, API, PubFun) when is_function(PubFun, 1) ->
     amqp_send(cf_exe_pid(Call), API, PubFun).
 
+-spec amqp_send(pid() | kapps_call:call(), term(), kz_term:api_terms(), kz_amqp_worker:publish_fun()) -> 'ok'.
+amqp_send(Srv, Target, API, PubFun) when is_pid(Srv), is_function(PubFun, 2) ->
+    gen_server:cast(Srv, {'amqp_send', Target, API, PubFun});
+amqp_send(Call, Target, API, PubFun) when is_function(PubFun, 2) ->
+    amqp_send(cf_exe_pid(Call), Target, API, PubFun).
+
 -spec amqp_call(pid() | kapps_call:call(), kz_term:api_terms(), kz_amqp_worker:publish_fun(), kz_amqp_worker:validate_fun()) -> 'ok'.
 amqp_call(Srv, API, PubFun, VerifyFun) when is_pid(Srv), is_function(PubFun, 1) ->
     gen_server:call(Srv, {'amqp_call', API, PubFun, VerifyFun});
@@ -528,6 +534,9 @@ handle_cast('initialize', State) ->
     initialize(State);
 handle_cast({'amqp_send', API, PubFun}, #state{queue=Q}=State) ->
     amqp_send_message(API, PubFun, Q),
+    {'noreply', State};
+handle_cast({'amqp_send', Target, API, PubFun}, #state{queue=Q}=State) ->
+    amqp_send_message(Target, API, PubFun, Q),
     {'noreply', State};
 handle_cast(_Msg, State) ->
     lager:debug("unhandled cast: ~p", [_Msg]),
@@ -840,6 +849,11 @@ cf_module_task(CFModule, Data, Call, AMQPConsumer, AMQPChannel) ->
 amqp_send_message(API, PubFun, AMQPQueue) ->
     Req = add_server_id(AMQPQueue, API),
     PubFun(Req).
+
+-spec amqp_send_message(kz_term:ne_binary(), kz_term:api_terms(), kz_amqp_worker:publish_fun(), kz_term:ne_binary()) -> 'ok'.
+amqp_send_message(Target, API, PubFun, AMQPQueue) ->
+    Req = add_server_id(AMQPQueue, API),
+    PubFun(Target, Req).
 
 -spec amqp_call_message(kz_term:api_terms(), kz_amqp_worker:publish_fun(), kz_amqp_worker:validate_fun(), kz_term:ne_binary()) ->
           kz_amqp_worker:request_return().
