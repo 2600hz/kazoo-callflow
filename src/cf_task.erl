@@ -11,16 +11,13 @@
 %%%-----------------------------------------------------------------------------
 -module(cf_task).
 
--behaviour(gen_listener).
+-behaviour(gen_server).
 
--export([start_link/3
-        ,relay_amqp/2
-        ]).
+-export([start_link/3]).
 -export([init/1
         ,handle_call/3
         ,handle_cast/2
         ,handle_info/2
-        ,handle_event/2
         ,terminate/2
         ,code_change/3
         ]).
@@ -38,44 +35,14 @@
                                }).
 -type state() :: #state{}.
 
-%% By convention, we put the options here in macros, but not required.
--define(BINDINGS(CallId), [{'call', [{'callid', CallId}]}
-                          ,{'self', []}
-                          ]).
--define(RESPONDERS, [{{?MODULE, 'relay_amqp'}
-                     ,[{<<"*">>, <<"*">>}]
-                     }
-                    ]).
--define(QUEUE_NAME, <<>>).
--define(QUEUE_OPTIONS, []).
--define(CONSUME_OPTIONS, []).
-
 %%------------------------------------------------------------------------------
 %% @doc Starts the listener and binds to the call channel destroy events.
 %% @end
 %%------------------------------------------------------------------------------
 -spec start_link(kapps_call:call(), fun(), list()) -> kz_types:startlink_ret().
 start_link(Call, Fun, Args) ->
-    gen_listener:start_link(?SERVER
-                           ,[{'bindings', ?BINDINGS(kapps_call:call_id(Call))}
-                            ,{'responders', ?RESPONDERS}
-                            ,{'queue_name', ?QUEUE_NAME}       % optional to include
-                            ,{'queue_options', ?QUEUE_OPTIONS} % optional to include
-                            ,{'consume_options', ?CONSUME_OPTIONS} % optional to include
-                            ]
-                           ,[Call, Fun, Args]
-                           ).
+    gen_server:start_link(?SERVER, [Call, Fun, Args], []).
 
-%%------------------------------------------------------------------------------
-%% @doc Handles call events (typically triggered by a FreeSWITCH event).
-%% For the purposes of the singular hook listener, we are only interested in
-%% `CHANNEL_DESTROY'.
-%% @end
-%%------------------------------------------------------------------------------
--spec relay_amqp(kz_json:object(), kz_term:proplist()) -> any().
-relay_amqp(JObj, Props) ->
-    Pid = props:get_value('cf_task_pid', Props),
-    kapps_call_command:relay_event(Pid, JObj).
 
 %%%=============================================================================
 %%% gen_server callbacks
@@ -88,8 +55,14 @@ relay_amqp(JObj, Props) ->
 -spec init([fun()]) -> {'ok', state()}.
 init([Call, Callback, Args]) ->
     _ = kapps_call:put_callid(Call),
+    kz_events:bind_call_id(kapps_call:call_id_direct(Call)),
+    Channel = kapps_call:kvs_fetch(consumer_channel, Call),
+    Queue = kapi:decode_queue(kapps_call:controller_queue(Call)),
+    ControllerQ = kapi:encode_pid(Queue, self()),
+    kz_amqp_channel:consumer_channel(Channel),
     lager:debug("started event listener for cf_task"),
-    {'ok', #state{call=Call
+    gen_server:cast(self(), 'launch_task'),
+    {'ok', #state{call=kapps_call:set_controller_queue(ControllerQ, Call)
                  ,callback=Callback
                  ,args=Args
                  }}.
@@ -110,9 +83,7 @@ handle_call(_Request, _From, State) ->
 -spec handle_cast(any(), state()) ->
           {'noreply', state()} |
           {'stop', 'normal', state()}.
-handle_cast({'gen_listener', {'created_queue', Q}}, State) ->
-    {'noreply', State#state{queue=Q}};
-handle_cast({'gen_listener', {'is_consuming', 'true'}}, State) ->
+handle_cast('launch_task', State) ->
     {'noreply', launch_task(State)};
 handle_cast('stop', State) ->
     {'stop', 'normal', State};
@@ -132,18 +103,14 @@ handle_info({'DOWN', Ref, 'process', Pid, Reason}
            ) ->
     lager:debug("task in ~p (~p) exited with reason: ~p", [Pid, Ref, Reason]),
     {'stop', 'normal', State};
+handle_info({'kapi', _}, #state{pid='undefined'} = State) ->
+    {'noreply', State};
+handle_info({'kapi', {_, _, JObj}}, #state{pid=Pid} = State) ->
+    kapps_call_command:relay_event(Pid, JObj),
+    {'noreply', State};
 handle_info(Info, State) ->
     lager:debug("unhandled message: ~p", [Info]),
     {'noreply', State}.
-
-%%------------------------------------------------------------------------------
-%% @doc Allows listener to pass options to handlers.
-%% @end
-%%------------------------------------------------------------------------------
--spec handle_event(kz_json:object(), state()) -> {'reply', kz_term:proplist()}.
-handle_event(_JObj, #state{pid='undefined'}) -> 'ignore';
-handle_event(_JObj, #state{pid=Pid}) ->
-    {'reply', [{'cf_task_pid', Pid}]}.
 
 %%------------------------------------------------------------------------------
 %% @doc This function is called by a `gen_server' when it is about to
@@ -165,21 +132,19 @@ code_change(_OldVsn, State, _Extra) ->
     {'ok', State}.
 
 -spec launch_task(state()) -> state().
-launch_task(#state{queue=Q
-                  ,call=Call
+launch_task(#state{call=Call
                   ,callback=Callback
                   ,args=Args
                   }=State
            ) ->
-    {Pid, Ref} = kz_process:spawn_monitor(fun task_launched/5, [Q, Call, Callback, Args, self()]),
+    {Pid, Ref} = kz_process:spawn_monitor(fun task_launched/4, [Call, Callback, Args, self()]),
     lager:debug("watching task execute in ~p (~p)", [Pid, Ref]),
     State#state{pid=Pid, ref=Ref}.
 
--spec task_launched(kz_term:api_binary(), kapps_call:call(), fun(), list(), pid()) -> any().
-task_launched(Q, Call, Callback, Args, Parent) ->
+-spec task_launched(kapps_call:call(), fun(), list(), pid()) -> any().
+task_launched(Call, Callback, Args, Parent) ->
     kapps_call:put_callid(Call),
     _ = kz_amqp_channel:consumer_pid(Parent),
     Funs = [{fun kapps_call:kvs_store/3, 'consumer_pid', Parent}
-           ,{fun kapps_call:set_controller_queue/2, Q}
            ],
     apply(Callback, Args ++ [kapps_call:exec(Funs, Call)]).

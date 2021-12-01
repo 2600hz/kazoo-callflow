@@ -527,7 +527,8 @@ handle_cast({'callid_update', NewCallId}, #state{call=Call}=State) ->
     _ = kz_events:bind_call_id(NewCallId),
     {'noreply', State#state{call=kapps_call:set_call_id(NewCallId, Call)}};
 handle_cast({'add_event_listener', {Mod, Args}}, #state{call=Call}=State) ->
-    _EvtL = cf_util:start_event_listener(Call, Mod, Args),
+    NewCall = kapps_call:kvs_store('consumer_channel', kz_amqp_channel:consumer_channel(), Call),
+    _EvtL = cf_util:start_event_listener(NewCall, Mod, Args),
     lager:debug("started event listener: ~p", [_EvtL]),
     {'noreply', State};
 handle_cast('initialize', State) ->
