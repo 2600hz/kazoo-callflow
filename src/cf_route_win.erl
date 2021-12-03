@@ -282,7 +282,15 @@ maybe_start_recording(Call) ->
 
 maybe_start_recording(Call0, FromNetwork) ->
     Call1 = maybe_start_account_recording(Call0, FromNetwork),
-    maybe_start_endpoint_recording(Call1, FromNetwork).
+    case kapps_call:is_recording(Call1) of
+        'true' ->
+            %% Avoid recordings duplication
+            lager:debug("call is already being recorded, not trying to record endpoint"),
+            Call1;
+        'false' ->
+            lager:debug("call is not being recorded yet, maybe start recording endpoint"),
+            maybe_start_endpoint_recording(Call1, FromNetwork)
+    end.
 
 maybe_start_account_recording(Call, FromNetwork) ->
     case kz_endpoint:get(kapps_call:account_id(Call), Call) of
