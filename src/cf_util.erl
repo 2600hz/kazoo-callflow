@@ -832,6 +832,16 @@ normalize_capture_group(CaptureGroup, Call) ->
               when Call :: kapps_call:call(),
                    ToNetwork :: kz_term:ne_binary().
 maybe_start_recording_to(Call, ToNetwork) ->
+    maybe_start_recording_to(Call, ToNetwork, kapps_call:is_recording(Call)).
+
+-spec maybe_start_recording_to(Call, ToNetwork, boolean()) -> kapps_call:call()
+              when Call :: kapps_call:call(),
+                   ToNetwork :: kz_term:ne_binary().
+maybe_start_recording_to(Call, _ToNetwork, 'true') ->
+    %% Avoid recordings duplication
+    lager:debug("call is already being recorded, not starting another recording here"),
+    Call;
+maybe_start_recording_to(Call, ToNetwork, 'false') ->
     FromNetwork = kapps_call:inception_type(Call), % onnet or offnet
     Routines = [{fun maybe_start_account_recording/3, FromNetwork, ToNetwork}
                ,{fun maybe_start_endpoint_recording/3, FromNetwork, ToNetwork}
