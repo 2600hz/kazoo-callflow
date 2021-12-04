@@ -842,6 +842,7 @@ maybe_start_recording_to(Call, _ToNetwork, 'true') ->
     lager:debug("call is already being recorded, not starting another recording here"),
     Call;
 maybe_start_recording_to(Call, ToNetwork, 'false') ->
+    lager:debug("call is not being recorded yet, maybe start recording"),
     FromNetwork = kapps_call:inception_type(Call), % onnet or offnet
     Routines = [{fun maybe_start_account_recording/3, FromNetwork, ToNetwork}
                ,{fun maybe_start_endpoint_recording/3, FromNetwork, ToNetwork}
