@@ -17,6 +17,8 @@
 
 -include("callflow.hrl").
 
+-type endpoint_get_error() :: kz_endpoint:build_errors() | 'endpoint_not_configured'.
+
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module, attempts to call an endpoint as defined
 %% in the Data payload.  Returns continue if fails to connect or
@@ -26,20 +28,24 @@
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
 handle(Data, Call) ->
     UserId = kz_json:get_ne_binary_value(<<"id">>, Data),
-    StopOnError = stop_on_error(Call),
     case get_endpoints(UserId, Data, Call) of
-        {'ok', Endpoints} ->
-            maybe_bridge(Data, Call, Endpoints);
-        {'error', Error} when StopOnError ->
-            lager:warning("error ~p building endpoint for ~s", [Error, UserId]),
-            cf_exe:stop(Call, <<"DESTINATION_OUT_OF_ORDER">>);
-        {'error', _R} ->
-            lager:info("error bridging to user: ~p", [_R]),
-            cf_exe:continue(Call)
+        {'ok', Endpoints} -> maybe_bridge(Data, Call, Endpoints);
+        {'error', Error} -> handle_error(Call, UserId, Error, should_block_self(Call))
     end.
 
--spec stop_on_error(kapps_call:call()) -> boolean().
-stop_on_error(Call) ->
+-spec handle_error(kapps_call:call(), kz_term:api_ne_binary(), endpoint_get_error(), boolean()) -> ok.
+handle_error(Call, UserId, 'endpoint_called_self', true) ->
+    lager:warning("endpoint ~s called self with transfer/cfwd", [UserId]),
+    cf_exe:stop(Call, <<"DESTINATION_OUT_OF_ORDER">>);
+handle_error(Call, UserId, 'owner_called_self', true) ->
+    lager:warning("owner ~s called self with transfer/cfwd", [UserId]),
+    cf_exe:stop(Call, <<"DESTINATION_OUT_OF_ORDER">>);
+handle_error(Call, UserId, Error, _) ->
+    lager:info("error bridging to user ~s : ~s", [UserId, Error]),
+    cf_exe:continue(kz_term:to_upper_binary(Error), Call).
+
+-spec should_block_self(kapps_call:call()) -> boolean().
+should_block_self(Call) ->
     kapps_call:is_call_forward(Call)
         orelse kapps_call:is_transfer(Call).
 
@@ -99,8 +105,7 @@ maybe_handle_bridge_failure(Reason, Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_endpoints(kz_term:api_binary(), kz_json:object(), kapps_call:call()) ->
-          {'ok', kz_json:objects()} |
-          {'error', kz_endpoint:build_errors() | 'endpoint_not_configured'}.
+          {'ok', kz_json:objects()} | {error, endpoint_get_error()}.
 get_endpoints('undefined', _, _) ->
     {'error', 'endpoint_not_configured'};
 get_endpoints(UserId, Data, Call) ->
