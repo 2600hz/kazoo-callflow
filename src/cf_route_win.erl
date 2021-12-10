@@ -244,9 +244,9 @@ set_language(Call) ->
     Default = kz_media_util:prompt_language(kapps_call:account_id(Call)),
     case kz_endpoint:get(Call) of
         {'ok', Endpoint} ->
-            Language = kzd_devices:language(Endpoint, Default),
+            Language = kzd_endpoint:language(Endpoint, Default),
             lager:debug("setting language '~s' for this call", [Language]),
-            kapps_call:set_language(kz_term:to_lower_binary(Language), Call);
+            kapps_call:set_language(Language, Call);
         {'error', _E} ->
             lager:debug("no source endpoint for this call, setting language to default ~s", [Default]),
             kapps_call:set_language(Default, Call)
