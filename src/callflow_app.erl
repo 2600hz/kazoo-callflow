@@ -30,6 +30,7 @@
 -spec start(application:start_type(), any()) -> kz_types:startapp_ret().
 start(_Type, _Args) ->
     _ = declare_exchanges(),
+    kz_events:start_call_events(),
     callflow_sup:start_link().
 
 %%------------------------------------------------------------------------------
@@ -39,7 +40,6 @@ start(_Type, _Args) ->
 -spec stop(any()) -> any().
 stop(_State) ->
     'ok'.
-
 
 -spec declare_exchanges() -> 'ok'.
 declare_exchanges() ->

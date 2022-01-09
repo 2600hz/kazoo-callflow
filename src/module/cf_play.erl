@@ -63,8 +63,6 @@ play(Data, Call, Media) ->
             kapps_call_command:answer(Call),
             timer:sleep(?POST_ANSWER_DELAY)
     end,
-    lager:info("playing media ~s", [Media]),
-
     NoopId = kapps_call_command:noop_id(),
     Commands = [kz_json:from_list([{<<"Application-Name">>, <<"noop">>}
                                   ,{<<"Call-ID">>, kapps_call:call_id(Call)}
@@ -75,6 +73,7 @@ play(Data, Call, Media) ->
     Command = [{<<"Application-Name">>, <<"queue">>}
               ,{<<"Commands">>, Commands}
               ],
+    lager:info("playing media ~s / ~s", [Media, NoopId]),
     kapps_call_command:send_command(Command, Call),
     cf_util:wait_for_noop(Call, NoopId).
 

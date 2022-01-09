@@ -57,17 +57,20 @@ handle_req(RouteReq, Props, Call) ->
             lager:info("unable to find callflow ~p", [R])
     end.
 
+-spec skip_prepend(kapps_call:call()) -> boolean().
+skip_prepend(Call) ->
+    kapps_call:is_transfer(Call)
+        orelse kapps_call:is_call_forward(Call).
+
 -spec maybe_prepend_preflow(kapi_route:req(), kz_term:proplist()
                            ,kapps_call:call(), kzd_callflows:doc()
                            ,boolean()
                            ) -> 'ok'.
 maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch) ->
-    IsTransfer = kapps_call:is_transfer(Call),
-
-    maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, IsTransfer).
+    maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, skip_prepend(Call)).
 
 maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'true') ->
-    lager:info("request is the result of a transfer, skipping preflow"),
+    lager:info("request is the result of a transfer or forward, skipping preflow"),
     maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
 maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'false') ->
     AccountId = kapps_call:account_id(Call),
