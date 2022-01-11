@@ -60,7 +60,8 @@ handle_req(RouteReq, Props, Call) ->
 -spec skip_prepend(kapps_call:call()) -> boolean().
 skip_prepend(Call) ->
     kapps_call:is_transfer(Call)
-        orelse kapps_call:is_call_forward(Call).
+        orelse kapps_call:is_call_forward(Call)
+        orelse kz_term:is_true(kapps_call:custom_sip_header(<<"X-Preferred-Media">>, Call)).
 
 -spec maybe_prepend_preflow(kapi_route:req(), kz_term:proplist()
                            ,kapps_call:call(), kzd_callflows:doc()
