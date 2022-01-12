@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2020, 2600Hz
+%%% @copyright (C) 2013-2022, 2600Hz
 %%% @doc Eavesdrop feature.
 %%%
 %%% <h4>Data options:</h4>
@@ -89,12 +89,19 @@ eavesdrop_a_channel(Channels, Call) ->
             no_channels(Call);
         {[], [RemoteChannel | _Remote]} ->
             lager:info("no calls on my media server, trying redirect to ~s", [kz_json:get_ne_binary_value(<<"node">>, RemoteChannel)]),
-            Contact = erlang:iolist_to_binary(["sip:", kapps_call:request(Call)]),
-            kapps_call_command:redirect_to_node(Contact, kz_json:get_ne_binary_value(<<"node">>, RemoteChannel), Call);
+            kapps_call_command:redirect(remote_contact(Call), switch_url(RemoteChannel), Call);
         {[LocalChannel | _Cs], _} ->
             lager:info("found a call (~s) on my media server", [kz_json:get_ne_binary_value(<<"uuid">>, LocalChannel)]),
             eavesdrop_call(LocalChannel, Call)
     end.
+
+-spec remote_contact(kapps_call:call()) -> kz_term:ne_binary().
+remote_contact(Call) ->
+    erlang:iolist_to_binary(["sip:", kapps_call:request(Call)]).
+
+-spec switch_url(kz_json:objects()) -> kz_term:ne_binary().
+switch_url(JObj) ->
+    kz_json:get_ne_binary_value(<<"switch_url">>, JObj).
 
 -type channels() :: {kz_json:objects(), kz_json:objects()}.
 -type channel_sort_acc() :: {kz_term:ne_binary(), kz_term:ne_binary(), channels()}.
@@ -120,40 +127,19 @@ channels_sort(Channel, {MyUUID, MyMediaServer, {Local, Remote}} = Acc) ->
 -spec eavesdrop_call(kz_json:object(), kapps_call:call()) -> 'ok'.
 eavesdrop_call(Channel, Call) ->
     UUID = kz_json:get_ne_binary_value(<<"uuid">>, Channel),
-    _Answer = kapps_call_command:b_answer(Call),
-    kapps_call_command:send_command(eavesdrop_cmd(UUID), Call),
-    lager:info("caller ~s is being eavesdropper", [kapps_call:caller_id_name(Call)]),
-    _ = wait_for_eavesdrop_complete(Call),
-    cf_exe:stop(Call).
+    {ok, _} = kapps_call_command:b_answer(Call),
+    lager:info("caller ~s is listening to channel ~s", [kapps_call:caller_id_name(Call), UUID]),
+    Result = kapps_call_command:b_eavesdrop(UUID, Call),
+    handle_eavesdrop_result(Result, Call).
 
--spec wait_for_eavesdrop_complete(kapps_call:call()) -> 'ok'.
-wait_for_eavesdrop_complete(Call) ->
-    case kapps_call_command:wait_for_hangup(?MILLISECONDS_IN_HOUR) of
-        {'ok', 'channel_hungup'} -> 'ok';
-        {'error', 'timeout'} ->
-            verify_call_is_active(Call)
+-spec handle_eavesdrop_result(kapps_call_command:command_result(), kapps_call:call()) -> 'ok'.
+handle_eavesdrop_result({error, timeout}, Call) -> cf_exe:stop(Call);
+handle_eavesdrop_result({error, channel_hungup}, Call) -> cf_exe:hard_stop(Call);
+handle_eavesdrop_result({_, JObj}, Call) ->
+    case kz_call_event:channel_answer_state(JObj) of
+        <<"hangup">> -> cf_exe:hard_stop(Call);
+        _Other -> cf_exe:stop(Call)
     end.
-
--spec verify_call_is_active(kapps_call:call()) -> 'ok'.
-verify_call_is_active(Call) ->
-    lager:debug("timed out while waiting for hangup, checking call status"),
-    case kapps_call_command:b_channel_status(Call) of
-        {'ok', ChannelStatus} ->
-            case kz_json:get_ne_binary_value(<<"Status">>, ChannelStatus) of
-                <<"active">> -> wait_for_eavesdrop_complete(Call);
-                _Status ->
-                    lager:debug("channel has status ~s", [_Status])
-            end;
-        {'error', _E} ->
-            lager:debug("failed to get status: ~p", [_E])
-    end.
-
--spec eavesdrop_cmd(kz_term:ne_binary()) -> kz_term:proplist().
-eavesdrop_cmd(TargetCallId) ->
-    [{<<"Application-Name">>, <<"eavesdrop">>}
-    ,{<<"Target-Call-ID">>, TargetCallId}
-    ,{<<"Enable-DTMF">>, 'true'}
-    ].
 
 -spec find_sip_endpoints(kz_json:object(), kapps_call:call()) ->
           kz_term:ne_binaries().
