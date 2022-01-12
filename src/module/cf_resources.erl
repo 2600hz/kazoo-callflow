@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Callflow resource.
 %%%
 %%% <h4>Data options:</h4>
@@ -193,10 +193,8 @@ get_channel_vars(Call) ->
                  ,fun maybe_set_bridge_generate_comfort_noise/2
                  ,fun maybe_call_forward/2
                  ],
-    CCVs = lists:foldl(fun(F, Acc) -> F(Call, Acc) end
-                      ,[]
-                      ,GetterFuns
-                      ),
+    Fun = fun(F, Acc) -> F(Call, Acc) end,
+    CCVs = lists:foldl(Fun, [], GetterFuns),
     kz_json:from_list(CCVs).
 
 -spec maybe_presence_id(kapps_call:call()) -> kz_term:api_ne_binary().
@@ -218,16 +216,42 @@ maybe_require_single_fail(Call, Acc) ->
 maybe_call_forward(Call, Acc) ->
     case kapps_call:is_call_forward(Call) of
         'false' -> Acc;
-        'true' ->
-            [{<<"Authorizing-ID">>, kapps_call:authorizing_id(Call)}
-            ,{<<"Authorizing-Type">>, kapps_call:authorizing_type(Call)}
-            ,{<<"Owner-ID">>, kapps_call:owner_id(Call)}
-            ,{<<"Application-Other-Leg-UUID">>, kapps_call:custom_channel_var(<<"Call-Forward-For-UUID">>, Call)}
-            ,{<<"Call-Forward">>, 'true'}
-            ,{<<"Call-Forward-From">>, kapps_call:custom_channel_var(<<"Call-Forward-From">>, Call)}
-            ,{<<"Is-Failover">>, kapps_call:custom_channel_var(<<"Is-Failover">>, Call)}
-            | Acc
-            ]
+        'true' -> call_forward_vars(Call, Acc)
+    end.
+
+call_forward_vars(Call, Vars) ->
+    Routines = [fun call_forward_basic_vars/2
+               ,fun call_forward_export_vars/2
+               ],
+    Fun = fun(F, Acc) -> F(Call, Acc) end,
+    lists:foldl(Fun, Vars, Routines).
+
+call_forward_basic_vars(Call, Acc) ->
+    [{<<"Authorizing-ID">>, kapps_call:authorizing_id(Call)}
+    ,{<<"Authorizing-Type">>, kapps_call:authorizing_type(Call)}
+    ,{<<"Owner-ID">>, kapps_call:owner_id(Call)}
+    ,{<<"Application-Other-Leg-UUID">>, kapps_call:custom_channel_var(<<"Call-Forward-For-UUID">>, Call)}
+    ,{<<"Call-Forward">>, 'true'}
+    ,{<<"Call-Forward-From">>, kapps_call:custom_channel_var(<<"Call-Forward-From">>, Call)}
+    ,{<<"Is-Failover">>, kapps_call:custom_channel_var(<<"Is-Failover">>, Call)}
+    | Acc
+    ].
+
+call_forward_export_vars(Call, Acc) ->
+    case kapps_call:custom_channel_var(<<"Call-Forward-Exports">>, Call) of
+        undefined -> Acc;
+        Exports -> call_forward_export_vars(Call, Acc, Exports)
+    end.
+
+call_forward_export_vars(Call, CCVs, Exports) ->
+    Vars = binary:split(Exports, <<"|">>, [global]),
+    Fun = fun(Var, Acc) -> call_forward_export_var(Call, Acc, Var) end,
+    lists:foldl(Fun, CCVs, Vars).
+
+call_forward_export_var(Call, Acc, Var) ->
+    case kapps_call:custom_channel_var(Var, Call) of
+        undefined -> Acc;
+        Value -> [{Var, Value} | Acc]
     end.
 
 -spec get_privacy_flags(kapps_call:call()) -> kz_term:proplist().
