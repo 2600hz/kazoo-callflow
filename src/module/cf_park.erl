@@ -813,7 +813,9 @@ callback_timeout(Data, SlotNumber) ->
 -spec unanswered_action(kz_term:ne_binary(), kz_json:object(), kz_json:object(), kapps_call:call()) -> 'ok'.
 unanswered_action(SlotNumber, Slot, Data, Call) ->
     case cf_exe:next(SlotNumber, Call) of
-        'undefined' -> wait_for_pickup(SlotNumber, Slot, Data, Call);
+        'undefined' ->
+            update_presence(Slot),
+            wait_for_pickup(SlotNumber, Slot, Data, Call);
         _ ->
             _ = publish_abandoned(Call, SlotNumber),
             _ = cleanup_slot(SlotNumber, cf_exe:callid(Call), kapps_call:account_db(Call)),
