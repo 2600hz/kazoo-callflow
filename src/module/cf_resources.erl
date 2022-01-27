@@ -108,7 +108,7 @@ handle_bridge_failure(false, Cause, Code, Call) ->
         'ok' -> lager:debug("found bridge failure child");
         'not_found' ->
             cf_util:send_default_response(Cause, Call),
-            cf_exe:stop(Call, Cause)
+            cf_exe:hard_stop(Call)
     end;
 handle_bridge_failure(true, Cause, _Code, Call) ->
     Response = kz_call_response:get_response(Cause, Call),

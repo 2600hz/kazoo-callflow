@@ -476,10 +476,11 @@ handle_cast({'stop', Cause}, #state{flows=[]
     lager:info("sent call hangup: ~s", [Cause]),
     {'noreply', State};
 handle_cast({'stop', _Cause}, #state{flows=[Flow|Flows]}=State) ->
+    lager:info("asked to stop(~s) but the spice must flow", [_Cause]),
     {'noreply', launch_cf_module(State#state{flow=Flow, flows=Flows})};
 handle_cast('hard_stop', State) ->
     lager:info("instructed to hard_stop"),
-    {'stop', 'normal', State#state{hard_stop = true}};
+    {'stop', 'normal', State#state{hard_stop = 'true'}};
 handle_cast('transfer', State) ->
     {'stop', {'shutdown', 'transfer'}, State};
 handle_cast('control_usurped', State) ->
@@ -979,7 +980,7 @@ get_pid(_) -> 'undefined'.
 -spec maybe_hangup_call(state()) -> 'ok'.
 maybe_hangup_call(#state{call=Call
                         ,hangup_info='undefined'
-                        ,hard_stop = false
+                        ,hard_stop='false'
                         }) ->
     hangup_call(Call, 'undefined');
 maybe_hangup_call(#state{}) -> 'ok'.
