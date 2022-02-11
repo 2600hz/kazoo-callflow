@@ -35,10 +35,10 @@
                    }).
 -type menu_keys() :: #menu_keys{}.
 -define(MENU_KEY_LENGTH, 1).
-%% if false, when calling into a menu that has a default action set
-%% and the caller dials an extension, caller will be redirected to parent's
-%% default action after extension hangs up.
--define(STOP_AFTER_EXTENSION, kapps_config:get_boolean(?MOD_CONFIG_CAT, <<"stop_after_extension">>, 'false')).
+%% Whether or not to branch extension when caller dials an extension.
+%% If true, when caller dials an extension, call will be branched, once that branch finishes
+%% if menu has a default action set, that action will be executed.
+-define(BRANCH_EXTENSION, kapps_config:get_boolean(?MOD_CONFIG_CAT, <<"branch_extension">>, 'true')).
 
 -record(cf_menu_data, {menu_id :: kz_term:api_ne_binary()
                       ,name = <<>> :: binary()
@@ -56,7 +56,7 @@
                       ,invalid_media = 'true' :: boolean() | kz_term:ne_binary()
                       ,keys = #menu_keys{} :: menu_keys()
                       ,interdigit_timeout = kapps_call_command:default_interdigit_timeout() :: pos_integer()
-                      ,stop_after_extension = ?STOP_AFTER_EXTENSION
+                      ,branch_extension = ?BRANCH_EXTENSION
                       }).
 -type menu() :: #cf_menu_data{}.
 
@@ -250,9 +250,9 @@ hunt_for_callflow(Digits, Menu, Call) ->
             UpdatedCall = kapps_call:kvs_store_proplist(Props, Call),
             Flow = kzd_callflows:flow(FlowDoc, kz_json:new()),
             cf_exe:set_call(UpdatedCall),
-            case Menu#cf_menu_data.stop_after_extension of
-                'true' -> cf_exe:continue_with_flow(Flow, UpdatedCall);
-                'false' -> cf_exe:branch(Flow, UpdatedCall)
+            case Menu#cf_menu_data.branch_extension of
+                'false' -> cf_exe:continue_with_flow(Flow, UpdatedCall);
+                'true' -> cf_exe:branch(Flow, UpdatedCall)
             end,
             'true';
         _ ->
@@ -575,8 +575,8 @@ get_menu_profile(Data, Call) ->
                                             ,[JObj, Data]
                                             ,kapps_call_command:default_interdigit_timeout()
                                             ))
-                         ,stop_after_extension =
-                              kz_json:is_true(<<"stop_after_extension">>, JObj, Default#cf_menu_data.stop_after_extension)
+                         ,branch_extension =
+                              kz_json:is_true(<<"branch_extension">>, JObj, Default#cf_menu_data.branch_extension)
                          };
         {'error', R} ->
             lager:info("failed to load menu route ~s, ~w", [Id, R]),
