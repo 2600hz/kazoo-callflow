@@ -241,24 +241,23 @@ hunt_for_callflow(Digits, Menu, Call) ->
     lager:info("hunting for ~s in account ~s", [Digits, AccountId]),
     case cf_flow:lookup(Digits, AccountId) of
         {'ok', FlowDoc, 'false'} ->
-            lager:info("callflow hunt succeeded, branching"),
+            lager:info("callflow hunt succeeded"),
             _ = kapps_call_command:flush_dtmf(Call),
             _ = play_transferring_prompt(Menu, Call),
             Props = [{'cf_capture_group', kz_json:get_ne_value(<<"capture_group">>, FlowDoc)}
                     ,{'cf_capture_groups', kz_json:get_value(<<"capture_groups">>, FlowDoc, kz_json:new())}
                     ],
             UpdatedCall = kapps_call:kvs_store_proplist(Props, Call),
-            Flow = kzd_callflows:flow(FlowDoc, kz_json:new()),
-            cf_exe:set_call(UpdatedCall),
-            case Menu#cf_menu_data.branch_extension of
-                'false' -> cf_exe:continue_with_flow(Flow, UpdatedCall);
-                'true' -> cf_exe:branch(Flow, UpdatedCall)
-            end,
+            execute_callflow(Menu, kzd_callflows:flow(FlowDoc), cf_exe:set_call(UpdatedCall)),
             'true';
         _ ->
             lager:info("callflow hunt failed"),
             'false'
     end.
+
+-spec execute_callflow(menu(), kz_json:object(), kapps_call:call()) -> ok.
+execute_callflow(#cf_menu_data{branch_extension=true}, Flow, Call) -> cf_exe:branch(Flow, Call);
+execute_callflow(#cf_menu_data{branch_extension=false}, Flow, Call) -> cf_exe:continue_with_flow(Flow, Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
