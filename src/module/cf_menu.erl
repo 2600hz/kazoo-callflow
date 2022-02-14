@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Provide a menu to caller.
 %%%
 %%% <h4>Data options:</h4>
@@ -35,6 +35,10 @@
                    }).
 -type menu_keys() :: #menu_keys{}.
 -define(MENU_KEY_LENGTH, 1).
+%% Whether or not to branch extension when caller dials an extension.
+%% If true, when caller dials an extension, call will be branched, once that branch finishes
+%% if menu has a default action set, that action will be executed.
+-define(BRANCH_EXTENSION, kapps_config:get_boolean(?MOD_CONFIG_CAT, <<"branch_extension">>, 'true')).
 
 -record(cf_menu_data, {menu_id :: kz_term:api_ne_binary()
                       ,name = <<>> :: binary()
@@ -52,6 +56,7 @@
                       ,invalid_media = 'true' :: boolean() | kz_term:ne_binary()
                       ,keys = #menu_keys{} :: menu_keys()
                       ,interdigit_timeout = kapps_call_command:default_interdigit_timeout() :: pos_integer()
+                      ,branch_extension = ?BRANCH_EXTENSION
                       }).
 -type menu() :: #cf_menu_data{}.
 
@@ -235,21 +240,24 @@ hunt_for_callflow(Digits, Menu, Call) ->
     AccountId = kapps_call:account_id(Call),
     lager:info("hunting for ~s in account ~s", [Digits, AccountId]),
     case cf_flow:lookup(Digits, AccountId) of
-        {'ok', Flow, 'false'} ->
-            lager:info("callflow hunt succeeded, branching"),
+        {'ok', FlowDoc, 'false'} ->
+            lager:info("callflow hunt succeeded"),
             _ = kapps_call_command:flush_dtmf(Call),
             _ = play_transferring_prompt(Menu, Call),
-            Props = [{'cf_capture_group', kz_json:get_ne_value(<<"capture_group">>, Flow)}
-                    ,{'cf_capture_groups', kz_json:get_value(<<"capture_groups">>, Flow, kz_json:new())}
+            Props = [{'cf_capture_group', kz_json:get_ne_value(<<"capture_group">>, FlowDoc)}
+                    ,{'cf_capture_groups', kz_json:get_value(<<"capture_groups">>, FlowDoc, kz_json:new())}
                     ],
             UpdatedCall = kapps_call:kvs_store_proplist(Props, Call),
-            cf_exe:set_call(UpdatedCall),
-            cf_exe:branch(kzd_callflows:flow(Flow, kz_json:new()), UpdatedCall),
+            execute_callflow(Menu, kzd_callflows:flow(FlowDoc), cf_exe:set_call(UpdatedCall)),
             'true';
         _ ->
             lager:info("callflow hunt failed"),
             'false'
     end.
+
+-spec execute_callflow(menu(), kz_json:object(), kapps_call:call()) -> ok.
+execute_callflow(#cf_menu_data{branch_extension=true}, Flow, Call) -> cf_exe:branch(Flow, Call);
+execute_callflow(#cf_menu_data{branch_extension=false}, Flow, Call) -> cf_exe:continue_with_flow(Flow, Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -566,6 +574,8 @@ get_menu_profile(Data, Call) ->
                                             ,[JObj, Data]
                                             ,kapps_call_command:default_interdigit_timeout()
                                             ))
+                         ,branch_extension =
+                              kz_json:is_true(<<"branch_extension">>, JObj, Default#cf_menu_data.branch_extension)
                          };
         {'error', R} ->
             lager:info("failed to load menu route ~s, ~w", [Id, R]),
