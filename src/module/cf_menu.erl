@@ -248,7 +248,8 @@ hunt_for_callflow(Digits, Menu, Call) ->
                     ,{'cf_capture_groups', kz_json:get_value(<<"capture_groups">>, FlowDoc, kz_json:new())}
                     ],
             UpdatedCall = kapps_call:kvs_store_proplist(Props, Call),
-            execute_callflow(Menu, kzd_callflows:flow(FlowDoc), cf_exe:set_call(UpdatedCall)),
+            cf_exe:set_call(UpdatedCall),
+            execute_callflow(Menu, kzd_callflows:flow(FlowDoc), UpdatedCall),
             'true';
         _ ->
             lager:info("callflow hunt failed"),
