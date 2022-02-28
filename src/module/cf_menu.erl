@@ -256,9 +256,11 @@ hunt_for_callflow(Digits, Menu, Call) ->
             'false'
     end.
 
--spec execute_callflow(menu(), kz_json:object(), kapps_call:call()) -> ok.
-execute_callflow(#cf_menu_data{branch_extension=true}, Flow, Call) -> cf_exe:branch(Flow, Call);
-execute_callflow(#cf_menu_data{branch_extension=false}, Flow, Call) -> cf_exe:continue_with_flow(Flow, Call).
+-spec execute_callflow(menu(), kz_json:object(), kapps_call:call()) -> 'ok'.
+execute_callflow(#cf_menu_data{branch_extension='true'}, Flow, Call) ->
+    cf_exe:branch(Flow, Call);
+execute_callflow(#cf_menu_data{branch_extension='false'}, Flow, Call) ->
+    cf_exe:continue_with_flow(Flow, Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
