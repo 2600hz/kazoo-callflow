@@ -120,4 +120,34 @@ You can include a couple macros that will be replaced at the time of a call in t
 
 By using `{caller_id_number}`, Kazoo will replace the header value with the actual Caller-ID number for that call. If the number was `4158867900` then the SIP INVITE would include the header `X-Billing-Number: 4158867900`.
 
-You can find the listing of available macros in the `/v2/schemas/ecallmgr` API call; look for the `expandable_macros` defaults.
+You can find the listing of available macros in the `/v2/schemas/system_config.ecallmgr` API call; look for the `expandable_macros` defaults:
+
+```bash
+curl https://{API_SERVER}:8443/v2/schemas/system_config.ecallmgr | jq
+```
+
+```json
+{
+  "data": {
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "description": "Schema for ecallmgr system_config",
+    "properties": {
+      ...
+      "expandable_macros": {
+        "default": {
+          "{account_id}": "${ecallmgr_Account-ID}",
+          "{billing_id}": "${ecallmgr_Billing-ID}",
+          "{caller_id_name}": "${caller_id_name}",
+          "{caller_id_number}": "${caller_id_number}",
+          "{reseller_id}": "${ecallmgr_Reseller-ID}"
+        },
+        "description": "macros that will be expanded at call-time, for use in custom SIP headers",
+        "type": "object"
+      },
+      ...
+    }
+  },
+  ...
+}
+
+```
