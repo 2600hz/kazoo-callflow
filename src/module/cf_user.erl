@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -86,7 +86,14 @@ bridge(Data, Call, Endpoints) ->
         {'ok', _} ->
             lager:info("completed successful bridge to user"),
             cf_exe:stop(Call);
-        {'fail', _}=Reason -> maybe_handle_bridge_failure(Reason, Call);
+        {'fail', _JObj}=Reason ->
+            lager:info("bridge to user failed : ~s / ~s / ~s"
+                      ,[kz_call_event:application_response(_JObj)
+                       ,kz_call_event:hangup_cause(_JObj)
+                       ,kz_call_event:hangup_code(_JObj)
+                       ]
+                      ),
+            maybe_handle_bridge_failure(Reason, Call);
         {'error', _R} ->
             lager:info("error bridging to user: ~p", [_R]),
             cf_exe:continue(Call)

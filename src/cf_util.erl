@@ -413,29 +413,50 @@ get_operator_callflow(Account, OpNum) ->
 -spec handle_bridge_failure({'fail', kz_json:object()} | kz_term:api_binary(), kapps_call:call()) ->
           'ok' | 'not_found'.
 handle_bridge_failure({'fail', Reason}, Call) ->
-    {Cause, Code} = kapps_util:get_call_termination_reason(Reason),
-    handle_bridge_failure(Cause, Code, Call);
+    {Response, Cause, Code} = get_call_termination_reason(Reason),
+    handle_bridge_failure_codes([Response, Cause, Code], Call);
 handle_bridge_failure('undefined', _) ->
     'not_found';
 handle_bridge_failure(Failure, Call) ->
-    case cf_exe:attempt(Failure, Call) of
-        {'attempt_resp', 'ok'} ->
-            lager:info("found child branch to handle failure: ~s", [Failure]),
-            'ok';
-        {'attempt_resp', _} ->
-            'not_found'
-    end.
+    handle_bridge_failure_code(Failure, Call).
 
 -spec handle_bridge_failure(kz_term:api_binary(), kz_term:api_binary(), kapps_call:call()) ->
           'ok' | 'not_found'.
 handle_bridge_failure(Cause, Code, Call) ->
-    lager:info("attempting to find failure branch for ~s:~s", [Code, Cause]),
-    case (handle_bridge_failure(Cause, Call) =:= 'ok')
-        orelse (handle_bridge_failure(Code, Call) =:= 'ok')
-    of
+    handle_bridge_failure_codes([Cause, Code], Call).
+
+-spec handle_bridge_failure_codes(kz_term:api_ne_binaries(), kapps_call:call()) ->
+          'ok' | 'not_found'.
+handle_bridge_failure_codes(Codes, Call) ->
+    lager:info("attempting to find failure branch for ~s", [kz_binary:join(Codes)]),
+    case lists:any(handle_bridge_failure_fun(Call), Codes) of
         'true' -> 'ok';
         'false' -> 'not_found'
     end.
+
+handle_bridge_failure_fun(Call) ->
+    fun(Code) ->
+            handle_bridge_failure_code(Code, Call) =:= 'ok'
+    end.
+
+handle_bridge_failure_code(<<"sip:487">>, Call) -> cf_exe:stop(Call);
+handle_bridge_failure_code(<<"ORIGINATOR_CANCEL">>, Call) -> cf_exe:stop(Call);
+handle_bridge_failure_code(<<"NORMAL_CLEARING">>, _Call) -> 'ignore';
+handle_bridge_failure_code(Failure, Call) ->
+    case cf_exe:attempt(Failure, Call) of
+        {'attempt_resp', 'ok'} ->
+            lager:info("found child branch to handle failure: ~s", [Failure]);
+        {'attempt_resp', _} ->
+            'not_found'
+    end.
+
+
+-spec get_call_termination_reason(kz_json:object()) -> {kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()}.
+get_call_termination_reason(JObj) ->
+    {kz_call_event:application_response(JObj, <<"UNSPECIFIED">>)
+    ,kz_call_event:hangup_cause(JObj, <<"UNSPECIFIED">>)
+    ,kz_call_event:hangup_code(JObj, <<"sip:600">>)
+    }.
 
 %%------------------------------------------------------------------------------
 %% @doc Send and wait for a call failure cause response.
