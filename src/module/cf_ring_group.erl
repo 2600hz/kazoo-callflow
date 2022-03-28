@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -27,9 +27,12 @@
         ]).
 -endif.
 
+-define(HARD_STOP_KEY, <<"hard_stop_after_successful_group">>).
+
 -type group_weight() :: 1..100.
 
 -type attempt_result() :: 'stop' |
+                          'hard_stop' |
                           'continue' |
                           'no_endpoints' |
                           'fail'.
@@ -91,15 +94,17 @@ repeat(Data, Call, N) ->
 -spec repeat(kz_json:object(), kapps_call:call(), non_neg_integer(), attempt_result()) -> 'ok'.
 repeat(_Data, Call, _N, 'stop') ->
     cf_exe:stop(Call);
+repeat(_Data, Call, _N, 'hard_stop') ->
+    cf_exe:hard_stop(Call);
 repeat(Data, Call, N, 'continue') ->
     repeat(Data, Call, N-1);
 repeat(_Data, Call, _N, 'no_endpoints') ->
-    cf_exe:continue(Call);
+    cf_exe:continue(<<"NO_ENDPOINTS">>, Call);
 repeat(_Data, _Call, _N, 'fail') ->
     'ok'.
 
 -spec attempt_endpoints(kz_json:objects(), kz_json:object(), kapps_call:call()) ->
-          'stop' | 'fail' | 'continue'.
+          'hard_stop' | 'stop' | 'fail' | 'continue'.
 attempt_endpoints(Endpoints, Data, Call0) ->
     Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
 
@@ -115,9 +120,9 @@ attempt_endpoints(Endpoints, Data, Call0) ->
                                     ,'undefined', IgnoreForward, FailOnSingleReject, Call
                                     )
     of
-        {'ok', _} ->
+        {'ok', Reply} ->
             lager:info("completed successful bridge to the ring group - call finished normally"),
-            'stop';
+            after_success_bridge(kz_call_event:channel_answer_state(Reply), should_hard_stop(Call, Data));
         {'fail', _}=F ->
             case cf_util:handle_bridge_failure(F, Call) of
                 'ok' -> lager:debug("bridge failure handled"), 'fail';
@@ -132,6 +137,19 @@ attempt_endpoints(Endpoints, Data, Call0) ->
                       ),
             'continue'
     end.
+
+-spec should_hard_stop(kapps_call:call(), kz_json:object()) -> boolean().
+should_hard_stop(Call, Data) -> kz_json:is_true(?HARD_STOP_KEY, Data, should_hard_stop_default(Call)).
+
+-spec should_hard_stop_default(kapps_call:call()) -> boolean().
+should_hard_stop_default(Call) ->
+    AccountId = kapps_call:account_id(Call),
+    kapps_account_config:get_global(AccountId, ?CF_CONFIG_CAT, ?HARD_STOP_KEY, false).
+
+-spec after_success_bridge(kz_term:api_ne_binary(), boolean()) -> 'hard_stop' | 'stop'.
+after_success_bridge(<<"hangup">>, true) -> 'hard_stop';
+after_success_bridge(_, _) -> 'stop'.
+
 
 -spec get_endpoints(kz_json:object(), kapps_call:call()) -> kz_json:objects().
 get_endpoints(Data, Call) ->
