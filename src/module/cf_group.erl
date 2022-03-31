@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -18,6 +18,8 @@
 -include_lib("kazoo_amqp/src/api/kapi_dialplan.hrl").
 
 -export([handle/2]).
+
+-define(HARD_STOP_KEY, <<"hard_stop_after_successful_group">>).
 
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module, attempts to call an endpoint as defined
@@ -71,9 +73,9 @@ attempt_endpoints(JObj, Data, Call0, Endpoints) ->
     lager:info("attempting group of ~b members with strategy ~s", [length(Endpoints), Strategy]),
     _ = kapps_call_command:b_answer(Call),
     case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, 'true', Ringback, 'undefined', IgnoreForward, Call) of
-        {'ok', _} ->
+        {'ok', Reply} ->
             lager:info("completed successful bridge to the group - call finished normally"),
-            cf_exe:stop(Call);
+            after_success_bridge(Call, kz_call_event:channel_answer_state(Reply), should_hard_stop(Call, Data));
         {'fail', _}=F ->
             case cf_util:handle_bridge_failure(F, Call) of
                 'ok' -> lager:debug("bridge failure handled");
@@ -85,6 +87,18 @@ attempt_endpoints(JObj, Data, Call0, Endpoints) ->
                       ),
             cf_exe:continue(Call)
     end.
+
+-spec should_hard_stop(kapps_call:call(), kz_json:object()) -> boolean().
+should_hard_stop(Call, Data) -> kz_json:is_true(?HARD_STOP_KEY, Data, should_hard_stop_default(Call)).
+
+-spec should_hard_stop_default(kapps_call:call()) -> boolean().
+should_hard_stop_default(Call) ->
+    AccountId = kapps_call:account_id(Call),
+    kapps_account_config:get_global(AccountId, ?CF_CONFIG_CAT, ?HARD_STOP_KEY, 'false').
+
+-spec after_success_bridge(kapps_call:call(), kz_term:api_ne_binary(), boolean()) -> 'ok'.
+after_success_bridge(Call, <<"hangup">>, 'true') -> cf_exe:hard_stop(Call);
+after_success_bridge(Call, _, _) -> cf_exe:stop(Call).
 
 -spec build_endpoints(kz_json:object(), kapps_call:call()) -> kz_json:objects().
 build_endpoints(JObj, Call) ->
