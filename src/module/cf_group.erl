@@ -96,7 +96,7 @@ should_hard_stop_default(Call) ->
     AccountId = kapps_call:account_id(Call),
     kapps_account_config:get_global(AccountId, ?CF_CONFIG_CAT, ?HARD_STOP_KEY, 'false').
 
--spec after_success_bridge(kapps_call:call(), kz_term:api_ne_binary(), boolean()) -> kapps_call:call().
+-spec after_success_bridge(kapps_call:call(), kz_term:api_ne_binary(), boolean()) -> 'ok'.
 after_success_bridge(Call, <<"hangup">>, 'true') -> cf_exe:hard_stop(Call);
 after_success_bridge(Call, _, _) -> cf_exe:stop(Call).
 
