@@ -18,6 +18,7 @@ Key | Description | Type | Default | Required | Support Level
 `endpoints` | Endpoint IDs (devices, users, etc) included in the ring group | `array(object())` |   | `false` |  
 `fail_on_single_reject` | If any leg rejects the call, cancel all other legs | `boolean()` |   | `false` |  
 `group_id` | Document ID of a group to merge its settings into callflow ring group module settings, including its endpoints. | `string(1..128)` |   | `false` |  
+`hard_stop_after_successful_group` | should hard stop on successful bridge | `boolean()` |   | `false` |  
 `ignore_forward` | If true, will ignore SIP redirect requests for call-forwarded devices | `boolean()` | `true` | `false` |  
 `repeats` | How many times to retry the ring group | `integer()` | `1` | `false` |  
 `ringback` | Ringback to use | `string()` |   | `false` |  
