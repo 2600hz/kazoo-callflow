@@ -14,6 +14,7 @@ Key | Description | Type | Default | Required | Support Level
 `endpoints` | List of endpoint (device/user/group) IDs | `array(string())` | `[]` | `false` |  
 `fail_on_single_reject` | If any leg rejects the call, cancel all other legs | `boolean()` |   | `false` |  
 `group_id` | ID of the group | `string()` |   | `false` |  
+`hard_stop_after_successful_group` | should hard stop on successful bridge | `boolean()` |   | `false` |  
 `id` | Group ID | `string()` |   | `false` |  
 `ignore_forward` | Whether to ignore forwarded phones | `boolean()` | `true` | `false` |  
 `repeats` | How many times to repeat dialing the group | `integer()` | `1` | `false` |  
