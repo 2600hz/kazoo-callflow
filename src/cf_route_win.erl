@@ -311,10 +311,12 @@ maybe_start_endpoint_recording(Call, <<"offnet">>=_FromNetwork) ->
 maybe_start_endpoint_recording(Call, FromNetwork, EndpointId) ->
     {'ok', Endpoint} = kz_endpoint:get(EndpointId, Call),
     case kz_endpoint_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
-        'false' -> Call;
-        {'true', Call1} ->
-            lager:info("endpoint ~s recording started", [EndpointId]),
-            Call1
+        'false' ->
+            Call;
+        {'true', {ActionKey, ActionApp}} ->
+            lager:debug("starting endpoint recording (~s inbound)", [FromNetwork]),
+            NewActions = kz_json:set_value(ActionKey, ActionApp, kz_json:new()),
+            kapps_call:kvs_store('outbound_actions', NewActions, Call)
     end.
 
 -spec include_denied_call_restrictions(kapps_call:call()) -> kapps_call:call().
