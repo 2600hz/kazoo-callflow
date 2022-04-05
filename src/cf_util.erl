@@ -832,17 +832,6 @@ normalize_capture_group(CaptureGroup, Call) ->
               when Call :: kapps_call:call(),
                    ToNetwork :: kz_term:ne_binary().
 maybe_start_recording_to(Call, ToNetwork) ->
-    maybe_start_recording_to(Call, ToNetwork, kapps_call:is_recording(Call)).
-
--spec maybe_start_recording_to(Call, ToNetwork, boolean()) -> kapps_call:call()
-              when Call :: kapps_call:call(),
-                   ToNetwork :: kz_term:ne_binary().
-maybe_start_recording_to(Call, _ToNetwork, 'true') ->
-    %% Avoid recordings duplication
-    lager:debug("call is already being recorded, not starting another recording here"),
-    Call;
-maybe_start_recording_to(Call, ToNetwork, 'false') ->
-    lager:debug("call is not being recorded yet, maybe start recording"),
     FromNetwork = kapps_call:inception_type(Call), % onnet or offnet
     Routines = [{fun maybe_start_account_recording/3, FromNetwork, ToNetwork}
                ,{fun maybe_start_endpoint_recording/3, FromNetwork, ToNetwork}
@@ -850,16 +839,16 @@ maybe_start_recording_to(Call, ToNetwork, 'false') ->
     cf_exe:update_call(kapps_call:exec(Routines, Call)).
 
 -spec maybe_start_account_recording(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call()) -> kapps_call:call().
-maybe_start_account_recording(FromNetwork, ToNetwork, Call) ->
+maybe_start_account_recording(_FromNetwork, ToNetwork, Call) ->
     {'ok', Endpoint} = kz_endpoint:get(kapps_call:account_id(Call), Call),
 
-    case kz_account_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
-        {'true', NewCall} -> NewCall;
+    %% Inbound account recording is already being taken care of within cf_route_win module.
+    case kz_account_recording:maybe_record_outbound(ToNetwork, Endpoint, Call) of
         'false' ->
-            case kz_account_recording:maybe_record_outbound(ToNetwork, Endpoint, Call) of
-                'false' -> Call;
-                {'true', NewCall} -> NewCall
-            end
+            Call;
+        {'true', NewCall} ->
+            lager:debug("recording account (~s outbound)", [ToNetwork]),
+            NewCall
     end.
 
 -spec maybe_start_endpoint_recording(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call()) ->
@@ -887,7 +876,12 @@ maybe_start_onnet_endpoint_recording('undefined', _ToNetwork, _IsCallForward, _C
 maybe_start_onnet_endpoint_recording(EndpointId, ToNetwork, 'false', Call) ->
     case kz_endpoint:get(EndpointId, Call) of
         {'ok', Endpoint} ->
-            kz_endpoint_recording:maybe_record_outbound(ToNetwork, Endpoint, Call);
+            Ret = kz_endpoint_recording:maybe_record_outbound(ToNetwork, Endpoint, Call),
+            case Ret of
+                {'true', _} -> lager:debug("started endpoint recording (~s outbound)", [ToNetwork]);
+                _ -> 'ok'
+            end,
+            Ret;
         _ -> 'false'
     end;
 maybe_start_onnet_endpoint_recording(EndpointId, _ToNetwork, 'true', Call) ->
@@ -910,6 +904,7 @@ maybe_start_call_forwarded_endpoint(Call, {'ok', Endpoint}) ->
     case kz_endpoint_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
         'false' -> 'false';
         {'true', {ActionKey, ActionApp}} ->
+            lager:debug("starting endpoint ~s recording (~s inbound)", [kz_doc:id(Endpoint), FromNetwork]),
             NewActions = kz_json:set_value(ActionKey, ActionApp, kz_json:new()),
             {'true', kapps_call:kvs_store('outbound_actions', NewActions, Call)}
     end.
