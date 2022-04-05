@@ -295,9 +295,10 @@ maybe_start_account_recording(Call, FromNetwork) ->
 -spec maybe_start_account_recording(kapps_call:call(), kz_term:ne_binary(), kz_json:object()) -> kapps_call:call().
 maybe_start_account_recording(Call, FromNetwork, Endpoint) ->
     case kz_account_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
-        'false' -> Call;
+        'false' ->
+            Call;
         {'true', Call1} ->
-            lager:info("account recording started"),
+            lager:debug("account recording started (~s inbound)", [FromNetwork]),
             Call1
     end.
 
