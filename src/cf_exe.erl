@@ -655,8 +655,8 @@ handle_event(JObj, #state{cf_module_pid=PidRef
         {{<<"call_event">>, <<"CHANNEL_REPLACED">>}, _} ->
             handle_channel_replaced(Call, JObj, Notify);
         {{<<"call_event">>, <<"CHANNEL_DIRECT">>}, _} ->
-            handle_channel_direct(Call, JObj, Notify),
-            relay_message(Others, JObj);
+            lager:info("this callflow executor is the target of a direct bowout, terminate immediately", [CallId]),
+            hard_stop(Call);
         {{<<"call_event">>, <<"CHANNEL_BRIDGE">>}, _} ->
             handle_channel_bridged(Self, Notify, JObj, Call);
         {{<<"call_event">>, <<"CHANNEL_PIVOT">>}, CallId} ->
@@ -921,18 +921,6 @@ handle_channel_replaced(Call, CallEvent, Notify) ->
     case OrgFetchId =:= NewFetchId of
         'true' ->
             ReplacedBy = kz_call_event:replaced_by(CallEvent),
-            callid_update(ReplacedBy, Call),
-            relay_message(Notify, CallEvent);
-        'false' -> 'ok'
-    end.
-
--spec handle_channel_direct(kapps_call:call(), kz_call_event:payload(), kz_term:pids()) -> 'ok'.
-handle_channel_direct(Call, CallEvent, Notify) ->
-    OrgFetchId = kapps_call:custom_channel_var(<<"Fetch-ID">>, Call),
-    NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
-    case OrgFetchId =:= NewFetchId of
-        'true' ->
-            ReplacedBy = kz_call_event:connecting_b_leg_id(CallEvent),
             callid_update(ReplacedBy, Call),
             relay_message(Notify, CallEvent);
         'false' -> 'ok'
