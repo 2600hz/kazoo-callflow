@@ -877,17 +877,21 @@ maybe_start_onnet_endpoint_recording(EndpointId, ToNetwork, 'false', Call) ->
     case kz_endpoint:get(EndpointId, Call) of
         {'ok', Endpoint} ->
             Ret = kz_endpoint_recording:maybe_record_outbound(ToNetwork, Endpoint, Call),
-            case Ret of
-                {'true', _} -> lager:debug("started endpoint recording (~s outbound)", [ToNetwork]);
-                _ -> 'ok'
-            end,
+            maybe_log_endpoint_outbound_recording_started(EndpointId, ToNetwork, Ret),
             Ret;
-        _ -> 'false'
+        _ ->
+            'false'
     end;
 maybe_start_onnet_endpoint_recording(EndpointId, _ToNetwork, 'true', Call) ->
     maybe_start_call_forwarded_endpoint(Call, kz_endpoint:get(EndpointId, Call)).
 
-%% @doc if the call isn't call-fowarded, and the endpoint is known, kz_endpoint will setup recording
+-spec maybe_log_endpoint_outbound_recording_started(kz_term:ne_binary(), kz_term:ne_binary(), {'true', kapps_call:call()} | 'false') -> 'ok'.
+maybe_log_endpoint_outbound_recording_started(EndpointId, ToNetwork, {'true', _Call}) ->
+    lager:debug("started endpoint ~s recording (~s outbound)", [EndpointId, ToNetwork]);
+maybe_log_endpoint_outbound_recording_started(_EndpointId, _ToNetwork, 'false') ->
+    'ok'.
+
+%% @doc if the call isn't call-forwarded, and the endpoint is known, kz_endpoint will setup recording
 %% on answer
 -spec maybe_start_offnet_endpoint_recording(kz_term:api_binary(), boolean(), kapps_call:call()) ->
           {'true', kapps_call:call()} | 'false'.
