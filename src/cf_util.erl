@@ -563,8 +563,8 @@ maybe_system_dialplan_name({Key, Val}, Acc, Names) ->
 index_of(Value, List) ->
     Map = lists:zip(List, lists:seq(1, length(List))),
     case dict:find(Value, dict:from_list(Map)) of
-        {ok, Index} -> Index;
-        error -> 'undefined'
+        {'ok', Index} -> Index;
+        'error' -> 'undefined'
     end.
 
 -spec start_event_listener(kapps_call:call(), atom(), list()) ->
