@@ -2033,13 +2033,14 @@ populate_keys(Call) ->
           {'error', any()}.
 get_mailbox_doc(Db, Id, Data, Call) ->
     CaptureGroup = kapps_call:kvs_fetch('cf_capture_group', Call),
-    CGIsEmpty = kz_term:is_empty(CaptureGroup),
     case kz_term:is_empty(Id) of
         'false' ->
-            lager:info("opening ~s", [Id]),
+            lager:info("opening vm box ~s", [Id]),
             kz_datamgr:open_doc(Db, Id);
-        'true' when not CGIsEmpty ->
-            lager:info("capture group not empty: ~s", [CaptureGroup]),
+        'true' when CaptureGroup =:= <<>>; CaptureGroup =:= 'undefined' ->
+            get_user_mailbox_doc(Data, Call);
+        'true' ->
+            lager:info("searching for vm box by capture group '~s'", [CaptureGroup]),
             Opts = [{'key', CaptureGroup}
                    ,'include_docs'
                    ,'first_when_multiple'
@@ -2048,9 +2049,7 @@ get_mailbox_doc(Db, Id, Data, Call) ->
                 {'ok', JObj} ->
                     {'ok', kz_json:get_json_value(<<"doc">>, JObj, kz_json:new())};
                 E -> E
-            end;
-        'true' ->
-            get_user_mailbox_doc(Data, Call)
+            end
     end.
 
 -spec get_user_mailbox_doc(kz_json:object(), kapps_call:call()) ->

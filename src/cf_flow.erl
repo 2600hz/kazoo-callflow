@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Luis Azedo
 %%%
@@ -176,12 +176,16 @@ lookup_patterns(Number, AccountId) ->
 lookup_callflow_patterns(Patterns, Number, AccountId) ->
     case test_callflow_patterns(Patterns, Number) of
         'no_match' -> maybe_use_nomatch(Number, AccountId);
+        {<<>>, #pattern{flow_id=FlowId}=_Pattern} ->
+            lager:info("matched an empty capture group in flow ~s", [FlowId]),
+            return_callflow_doc(FlowId, AccountId, []);
         {Match, #pattern{flow_id=FlowId}=Pattern} ->
+            lager:info("matched ~s in flow ~s", [Match, FlowId]),
             NameMap = get_captured_names(Number, Pattern),
             Props = [{<<"capture_group">>, Match}
                     ,{<<"capture_groups">>, kz_json:from_list(NameMap)}
                     ],
-            return_callflow_doc(FlowId, AccountId, props:filter_empty(Props))
+            return_callflow_doc(FlowId, AccountId, Props)
     end.
 
 -spec get_captured_names(kz_term:ne_binary(), pattern()) -> kz_term:proplist().
