@@ -522,10 +522,9 @@ handle_cast({'branch', NewFlow}, #state{flow=Flow
             }
     end;
 handle_cast({'callid_update', NewCallId}, #state{call=Call}=State) ->
+    lager:info("updating callid to ~s, catch you on the flip side", [NewCallId]),
     kz_log:put_callid(NewCallId),
-    PrevCallId = kapps_call:call_id_direct(Call),
-    lager:info("updating callid to ~s (from ~s), catch you on the flip side", [NewCallId, PrevCallId]),
-    _ = kz_events:unbind_call_id(PrevCallId),
+    _ = kz_events:unbind_call_id(kapps_call:call_id_direct(Call)),
     _ = kz_events:bind_call_id(NewCallId),
     {'noreply', State#state{call=kapps_call:set_call_id(NewCallId, Call)}};
 handle_cast({'add_event_listener', {Mod, Args}}, #state{call=Call}=State) ->
@@ -657,6 +656,8 @@ handle_event(JObj, #state{cf_module_pid=PidRef
         {{<<"call_event">>, <<"CHANNEL_DIRECT">>}, _} ->
             lager:info("this callflow executor is the target of a direct bowout, terminate immediately", [CallId]),
             hard_stop(Call);
+        {{<<"call_event">>, <<"CHANNEL_TRANSFEROR">>}, _} ->
+            handle_channel_transferor(Call, JObj);
         {{<<"call_event">>, <<"CHANNEL_BRIDGE">>}, _} ->
             handle_channel_bridged(Self, Notify, JObj, Call);
         {{<<"call_event">>, <<"CHANNEL_PIVOT">>}, CallId} ->
@@ -666,7 +667,7 @@ handle_event(JObj, #state{cf_module_pid=PidRef
         {{<<"error">>, _}, _} ->
             handle_error(CallId, Notify, JObj);
         {_Evt, CallId} ->
-            lager:debug_unsafe("relaying ~p to ~p", [_Evt, Notify]),
+            lager:debug("relaying ~p to ~p", [_Evt, Notify]),
             relay_message(Notify, JObj);
         {{_Cat, _Name}, _Else} when Others =:= [] ->
             lager:info("received ~s (~s) from call ~s while relaying for ~s"
@@ -904,6 +905,22 @@ handle_channel_destroyed(Self, Notify, JObj) ->
            ],
     channel_destroyed(Self, kz_json:from_list(Prop)),
     relay_message(Notify, JObj).
+
+-spec handle_channel_transferor(kapps_call:call(), kz_call_event:payload()) -> 'ok'.
+handle_channel_transferor(Call, CallEvent) ->
+    OrgFetchId = kapps_call:custom_channel_var(<<"Fetch-ID">>, Call),
+    NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
+    case OrgFetchId =:= NewFetchId of
+        'false' -> 'ok';
+        'true'  ->
+            log_transferor(kz_call_event:transfer_destination(CallEvent)),
+            hard_stop(Call)
+    end.
+
+log_transferor(undefined) ->
+    lager:info("this callflow executor is transfering, terminate immediately");
+log_transferor(To) ->
+    lager:info("this callflow executor is transfering to ~s, terminate immediately", [To]).
 
 -spec handle_channel_transfer(kapps_call:call(), kz_call_event:payload()) -> 'ok'.
 handle_channel_transfer(Call, CallEvent) ->

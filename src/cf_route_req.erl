@@ -29,33 +29,38 @@
 handle_req(RouteReq, Props) ->
     CallId = kapi_route:call_id(RouteReq),
     kz_log:put_callid(CallId),
+    lager:debug("handle route request with fetch-id ~s", [kapi_route:fetch_id(RouteReq)]),
     'true' = kapi_route:req_v(RouteReq),
-
+    ControllerQ = kapi:encode_pid(props:get_value('queue', Props)),
     Routines = [fun maybe_referred_call/1
                ,fun maybe_device_redirected/1
+               ,{fun kapps_call:set_controller_queue/2, ControllerQ}
                ],
     Call = kapps_call:exec(Routines, kapps_call:from_route_req(RouteReq)),
     case is_binary(kapps_call:account_id(Call))
         andalso callflow_should_respond(Call)
     of
-        'true' ->
-            lager:info("received request ~s asking if callflows can route the call to ~s"
-                      ,[kapi_route:fetch_id(RouteReq), kapps_call:request_user(Call)]
-                      ),
-            AllowNoMatch = allow_no_match(Call),
-            case cf_flow:lookup(Call) of
-                %% if NoMatch is false then allow the callflow or if it is true and we are able allowed
-                %% to use it for this call
-                {'ok', Flow, NoMatch} when (not NoMatch)
-                                           orelse AllowNoMatch ->
-                    maybe_prepend_preflow(RouteReq, Props, Call, Flow, NoMatch);
-                {'ok', _, 'true'} ->
-                    lager:info("only available callflow is a nomatch for a unauthorized call", []);
-                {'error', R} ->
-                    lager:info("unable to find callflow ~p", [R])
-            end;
+        'true' -> handle_route_req(RouteReq, Call);
         'false' ->
             lager:debug("callflow not handling fetch-id ~s", [kapi_route:fetch_id(RouteReq)])
+    end.
+
+handle_route_req(RouteReq, Call) ->
+    lager:info("received request ~s asking if callflows can route the call to ~s"
+              ,[kapi_route:fetch_id(RouteReq), kapps_call:request_user(Call)]
+              ),
+    AllowNoMatch = allow_no_match(Call),
+    case cf_flow:lookup(Call) of
+        {'ok', Flow, 'false'} ->
+            maybe_reply_to_req(RouteReq, Call, Flow, 'false');
+        %% if callflow is the no_match, and we are able allowed to use it for this
+        %% call, proceed
+        {'ok', Flow, 'true'} when AllowNoMatch ->
+            maybe_reply_to_req(RouteReq, Call, Flow, 'true');
+        {'ok', _Flow, 'true'} ->
+            lager:info("only available callflow is a nomatch for a unauthorized call", []);
+        {'error', R} ->
+            lager:info("unable to find callflow ~p", [R])
     end.
 
 -spec skip_prepend(kapps_call:call()) -> boolean().
@@ -64,47 +69,43 @@ skip_prepend(Call) ->
         orelse kapps_call:is_call_forward(Call)
         orelse kz_term:is_true(kapps_call:custom_sip_header(<<"X-Preferred-Media">>, Call)).
 
--spec maybe_prepend_preflow(kapi_route:req(), kz_term:proplist()
-                           ,kapps_call:call(), kzd_callflows:doc()
-                           ,boolean()
-                           ) -> 'ok'.
-maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch) ->
-    maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, skip_prepend(Call)).
+-spec maybe_prepend_preflow(kapps_call:call(), kzd_callflows:doc()) -> 'ok'.
+maybe_prepend_preflow(Call, Callflow) ->
+    maybe_prepend_preflow(Call, Callflow, skip_prepend(Call)).
 
-maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'true') ->
+maybe_prepend_preflow(_Call, Callflow, 'true') ->
     lager:info("request is the result of a transfer or forward, skipping preflow"),
-    maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
-maybe_prepend_preflow(RouteReq, Props, Call, Callflow, NoMatch, 'false') ->
+    Callflow;
+maybe_prepend_preflow(Call, Callflow, 'false') ->
     AccountId = kapps_call:account_id(Call),
     case kzd_accounts:fetch(AccountId) of
         {'error', _E} ->
             lager:warning("could not open account doc ~s : ~p", [AccountId, _E]),
-            maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
+            Callflow;
         {'ok', AccountDoc} ->
-            case kzd_accounts:preflow_id(AccountDoc) of
-                'undefined' ->
-                    lager:debug("ignore preflow, not set"),
-                    maybe_reply_to_req(RouteReq, Props, Call, Callflow, NoMatch);
-                PreflowId ->
-                    lager:info("prepending callflow ~s", [PreflowId]),
-                    NewCallflow = kzd_callflows:prepend_preflow(Callflow, PreflowId),
-                    maybe_reply_to_req(RouteReq, Props, Call, NewCallflow, NoMatch)
-            end
+            maybe_prepend_account_preflow(Callflow, AccountDoc)
     end.
 
--spec maybe_reply_to_req(kapi_route:req(), kz_term:proplist()
-                        ,kapps_call:call(), kzd_callflows:doc(), boolean()) -> 'ok'.
-maybe_reply_to_req(RouteReq, Props, Call, Flow, NoMatch) ->
-    lager:info("callflow ~s in ~s satisfies request for ~s", [kz_doc:id(Flow)
-                                                             ,kapps_call:account_id(Call)
-                                                             ,kapps_call:request_user(Call)
-                                                             ]),
+maybe_prepend_account_preflow(Callflow, AccountDoc) ->
+    case kzd_accounts:preflow_id(AccountDoc) of
+        'undefined' ->
+            lager:debug("ignore preflow, not set"),
+            Callflow;
+        PreflowId ->
+            lager:info("prepending callflow ~s", [PreflowId]),
+            kzd_callflows:prepend_preflow(Callflow, PreflowId)
+    end.
+
+-spec maybe_reply_to_req(kapi_route:req(), kapps_call:call(), kzd_callflows:doc(), boolean()) -> 'ok'.
+maybe_reply_to_req(RouteReq, Call, Flow, NoMatch) ->
+    lager:info("callflow ~s in ~s satisfies request for ~s"
+              ,[kz_doc:id(Flow)
+               ,kapps_call:account_id(Call)
+               ,kapps_call:request_user(Call)
+               ]),
     case cf_util:token_check(Call, Flow) of
-        'false' -> 'ok';
-        'true' ->
-            ControllerQ = kapi:encode_pid(props:get_value('queue', Props)),
-            NewCall = update_call(Flow, NoMatch, ControllerQ, Call),
-            send_route_response(Flow, RouteReq, NewCall)
+        'false' -> lager:debug("token bucket prevented callflow reply");
+        'true' -> send_route_response(RouteReq, Call, Flow, NoMatch)
     end.
 
 %%------------------------------------------------------------------------------
@@ -184,8 +185,8 @@ cavs(_Flow, _RouteReq, _Call) -> 'undefined'.
 %% process.
 %% @end
 %%------------------------------------------------------------------------------
--spec send_route_response(kzd_callflows:doc(), kapi_route:req(), kapps_call:call()) -> 'ok'.
-send_route_response(Flow, RouteReq, Call) ->
+-spec send_route_response(kapi_route:req(), kapps_call:call(), kzd_callflows:doc(), boolean()) -> 'ok'.
+send_route_response(RouteReq, Call, Flow, NoMatch) ->
     lager:info("callflows knows how to route the call! sending park response"),
     AccountId = kapps_call:account_id(Call),
     CallId = kapps_call:call_id(Call),
@@ -209,21 +210,24 @@ send_route_response(Flow, RouteReq, Call) ->
              ]),
     ServerId = kz_api:server_id(RouteReq),
     kapi_route:publish_resp(ServerId, Resp),
-    wait_for_route_win(Call, FetchId).
+    wait_for_route_win(Call, FetchId, Flow, NoMatch).
 
-wait_for_route_win(Call, FetchId) ->
+wait_for_route_win(Call, FetchId, Flow, NoMatch) ->
     receive
         {'kapi', {_, {'call_event', 'CHANNEL_DESTROY'}, JObj}} ->
             case kz_call_event:fetch_id(JObj) of
                 FetchId -> lager:info("received channel destroy while waiting for route_win, exiting");
-                _Other -> wait_for_route_win(Call, FetchId)
+                _Other -> wait_for_route_win(Call, FetchId, Flow, NoMatch)
             end;
         {'kapi', {_, {'dialplan', 'route_win'}, RouteWin}} ->
             lager:info("callflow has received a route win, taking control of the call"),
-            cf_route_win:execute_callflow(RouteWin, kapps_call:from_route_win(RouteWin, Call))
+            execute_callflow(kapps_call:from_route_win(RouteWin, Call), Flow, NoMatch)
     after ?ROUTE_WIN_TIMEOUT ->
             lager:warning("callflow didn't received a route win, exiting")
     end.
+
+execute_callflow(Call, Flow, NoMatch) ->
+    cf_route_win:execute_callflow(update_call(Flow, NoMatch, Call)).
 
 -spec get_transfer_media(kzd_callflows:doc(), kapi_route:req()) -> kz_term:api_ne_binary().
 get_transfer_media(Flow, RouteReq) ->
@@ -258,19 +262,18 @@ pre_park_action(Call) ->
 %% @doc process
 %% @end
 %%------------------------------------------------------------------------------
--spec update_call(kzd_callflows:doc(), boolean(), kz_term:ne_binary(), kapps_call:call()) ->
-          kapps_call:call().
-update_call(Flow, NoMatch, ControllerQ, Call) ->
+-spec update_call(kzd_callflows:doc(), boolean(), kapps_call:call()) -> kapps_call:call().
+update_call(Flow, NoMatch, Call) ->
+    Callflow = maybe_prepend_preflow(Call, Flow),
     Props = [{'cf_flow_id', kz_doc:id(Flow)}
             ,{'cf_flow_name', kzd_callflows:name(Flow, kapps_call:request_user(Call))}
-            ,{'cf_flow', kzd_callflows:flow(Flow)}
+            ,{'cf_flow', kzd_callflows:flow(Callflow)}
             ,{'cf_capture_group', kzd_callflows:capture_group(Flow)}
             ,{'cf_capture_groups', kzd_callflows:capture_groups(Flow, kz_json:new())}
             ,{'cf_no_match', NoMatch}
             ],
 
     Updaters = [{fun kapps_call:kvs_store_proplist/2, Props}
-               ,{fun kapps_call:set_controller_queue/2, ControllerQ}
                ,{fun kapps_call:set_application_name/2, ?APP_NAME}
                ,{fun kapps_call:set_application_version/2, ?APP_VERSION}
                ,{fun kapps_call:insert_custom_channel_var/3, <<"CallFlow-ID">>, kz_doc:id(Flow)}

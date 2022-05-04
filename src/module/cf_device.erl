@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -28,9 +28,9 @@
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
 handle(Data, Call) ->
     case bridge_to_endpoints(Data, Call) of
-        {'ok', _} ->
+        {'ok', JObj} ->
             lager:info("completed successful bridge to the device"),
-            cf_exe:stop(Call);
+            stop(Call, kz_call_event:channel_answer_state(JObj));
         {'fail', _}=Reason -> maybe_handle_bridge_failure(Reason, Call);
         {'error', _R} when is_atom(_R) ->
             lager:info("failed to build endpoint from device: ~p", [_R]),
@@ -41,6 +41,11 @@ handle(Data, Call) ->
                       ),
             cf_exe:continue(Call)
     end.
+
+-spec stop(kapps_call:call(), kz_term:api_ne_binary()) -> ok.
+stop(Call, <<"hangup">>) -> cf_exe:hard_stop(Call);
+stop(Call, _) -> cf_exe:stop(Call).
+
 
 -spec maybe_handle_bridge_failure(any(), kapps_call:call()) -> 'ok'.
 maybe_handle_bridge_failure(Reason, Call) ->

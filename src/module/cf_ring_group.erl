@@ -33,6 +33,7 @@
 
 -type attempt_result() :: 'stop' |
                           'hard_stop' |
+                          'hangup' |
                           'continue' |
                           'no_endpoints' |
                           'fail'.
@@ -96,6 +97,9 @@ repeat(_Data, Call, _N, 'stop') ->
     cf_exe:stop(Call);
 repeat(_Data, Call, _N, 'hard_stop') ->
     cf_exe:hard_stop(Call);
+repeat(_Data, Call, _N, 'hangup') ->
+    kapps_call_command:queued_hangup(Call),
+    cf_exe:hard_stop(Call);
 repeat(Data, Call, N, 'continue') ->
     repeat(Data, Call, N-1);
 repeat(_Data, Call, _N, 'no_endpoints') ->
@@ -104,7 +108,7 @@ repeat(_Data, _Call, _N, 'fail') ->
     'ok'.
 
 -spec attempt_endpoints(kz_json:objects(), kz_json:object(), kapps_call:call()) ->
-          'hard_stop' | 'stop' | 'fail' | 'continue'.
+          'hard_stop' | 'hangup' | 'stop' | 'fail' | 'continue'.
 attempt_endpoints(Endpoints, Data, Call0) ->
     Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
 
@@ -146,9 +150,10 @@ should_hard_stop_default(Call) ->
     AccountId = kapps_call:account_id(Call),
     kapps_account_config:get_global(AccountId, ?CF_CONFIG_CAT, ?HARD_STOP_KEY, 'true').
 
--spec after_success_bridge(kz_term:api_ne_binary(), boolean()) -> 'hard_stop' | 'stop'.
-after_success_bridge(<<"hangup">>, 'true') -> 'hard_stop';
-after_success_bridge(_, _) -> 'stop'.
+-spec after_success_bridge(kz_term:api_ne_binary(), boolean()) -> 'hard_stop' | 'hangup' | 'stop'.
+after_success_bridge(<<"hangup">>, _) -> 'hard_stop';
+after_success_bridge(_AnswerState, true) -> 'hangup';
+after_success_bridge(_AnswerState, false) -> 'stop'.
 
 -spec get_endpoints(kz_json:object(), kapps_call:call()) -> kz_json:objects().
 get_endpoints(Data, Call) ->
