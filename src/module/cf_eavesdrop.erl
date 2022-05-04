@@ -89,15 +89,21 @@ eavesdrop_a_channel(Channels, Call) ->
             no_channels(Call);
         {[], [RemoteChannel | _Remote]} ->
             lager:info("no calls on my media server, trying redirect to ~s", [kz_json:get_ne_binary_value(<<"node">>, RemoteChannel)]),
+            kapps_call_command:set(kz_json:from_list([{<<?CALL_INTERACTION_ID>>, interaction_id(RemoteChannel)}]), Call),
             kapps_call_command:redirect(remote_contact(Call), switch_url(RemoteChannel), Call);
         {[LocalChannel | _Cs], _} ->
             lager:info("found a call (~s) on my media server", [kz_json:get_ne_binary_value(<<"uuid">>, LocalChannel)]),
+            kapps_call_command:set(kz_json:from_list([{<<?CALL_INTERACTION_ID>>, interaction_id(LocalChannel)}]), Call),
             eavesdrop_call(LocalChannel, Call)
     end.
 
 -spec remote_contact(kapps_call:call()) -> kz_term:ne_binary().
 remote_contact(Call) ->
     erlang:iolist_to_binary(["sip:", kapps_call:request(Call)]).
+
+-spec interaction_id(kz_json:objects()) -> kz_term:ne_binary().
+interaction_id(JObj) ->
+    kz_json:get_ne_binary_value(<<"interaction_id">>, JObj).
 
 -spec switch_url(kz_json:objects()) -> kz_term:ne_binary().
 switch_url(JObj) ->
