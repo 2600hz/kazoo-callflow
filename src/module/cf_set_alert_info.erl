@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2021, 2600Hz
+%%% @copyright (C) 2013-2022, 2600Hz
 %%% @doc "data":{
 %%%   "alert_info":{{value}},
 %%% }
@@ -29,9 +29,7 @@
 handle(Data, Call) ->
     Value = kz_json:get_ne_binary_value(<<"alert_info">>, Data),
     set_variable(Value, Call),
-    Call1 = kapps_call:set_custom_channel_var(<<"Alert_info">>, Value, Call),
-    cf_exe:set_call(Call1),
-    cf_exe:continue(Call1).
+    cf_exe:continue(Call).
 
 -spec set_variable(kz_term:api_ne_binary(), kapps_call:call()) -> 'ok'.
 set_variable('undefined', _Call) ->
