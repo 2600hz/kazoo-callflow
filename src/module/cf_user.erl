@@ -83,9 +83,9 @@ bridge(Data, Call, Endpoints) ->
                                     ,set_context_flags(Call, Data)
                                     )
     of
-        {'ok', _} ->
+        {'ok', JObj} ->
             lager:info("completed successful bridge to user"),
-            cf_exe:stop(Call);
+            stop(Call, kz_call_event:channel_answer_state(JObj));
         {'fail', _JObj}=Reason ->
             lager:info("bridge to user failed : ~s / ~s / ~s"
                       ,[kz_call_event:application_response(_JObj)
@@ -98,6 +98,11 @@ bridge(Data, Call, Endpoints) ->
             lager:info("error bridging to user: ~p", [_R]),
             cf_exe:continue(Call)
     end.
+
+-spec stop(kapps_call:call(), kz_term:api_ne_binary()) -> ok.
+stop(Call, <<"hangup">>) -> cf_exe:hard_stop(Call);
+stop(Call, _) -> cf_exe:stop(Call).
+
 
 -spec maybe_handle_bridge_failure(any(), kapps_call:call()) -> 'ok'.
 maybe_handle_bridge_failure(Reason, Call) ->
