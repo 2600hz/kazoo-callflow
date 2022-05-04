@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2020, 2600Hz
+%%% @copyright (C) 2010-2022, 2600Hz
 %%% @doc Starts a {@link cf_exe} and processes the "flow" sans DB.
 %%% @author James Aimonetti
 %%%
@@ -38,13 +38,13 @@ try_handle_req(JObj, {'ok', AMQPWorker}) ->
                           ,kapps_call:from_json(kz_json:get_json_value(<<"Call">>, JObj))
                           ),
 
-    handle_if_up(JObj, Call, kapps_call_command:b_channel_status(Call)).
+    handle_if_up(Call, kapps_call_command:b_channel_status(Call)).
 
--spec handle_if_up(kapi_callflow:resume(), kapps_call:call(), {'ok', kz_json:object()} | {'error', 'not_found'}) -> 'ok'.
-handle_if_up(JObj, Call, {'ok', _ChannelStatus}) ->
+-spec handle_if_up(kapps_call:call(), {'ok', kz_json:object()} | {'error', 'not_found'}) -> 'ok'.
+handle_if_up(Call, {'ok', _ChannelStatus}) ->
     lager:info("channel is still up"),
     cf_util:flush_control_queue(Call),
-    _ = cf_route_win:execute_callflow(JObj, Call),
+    _ = cf_route_win:execute_callflow(Call),
     'ok';
-handle_if_up(_JObj, _Call, {'error', 'not_found'}) ->
+handle_if_up(_Call, {'error', 'not_found'}) ->
     lager:info("channel status failed, not resuming call").
