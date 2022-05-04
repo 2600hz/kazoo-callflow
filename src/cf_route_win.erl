@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Handler for route wins, bootstraps callflow execution.
 %%% @author Karl Anderson
 %%%
@@ -11,7 +11,7 @@
 %%%-----------------------------------------------------------------------------
 -module(cf_route_win).
 
--export([execute_callflow/2]).
+-export([execute_callflow/1]).
 
 -include("callflow.hrl").
 
@@ -25,9 +25,9 @@
                 )
        ).
 
--spec execute_callflow(kapi_route:win(), kapps_call:call()) ->
+-spec execute_callflow(kapps_call:call()) ->
           {'ok' | 'restricted', kapps_call:call()}.
-execute_callflow(RouteWin, Call) ->
+execute_callflow(Call) ->
     case should_restrict_call(Call) of
         'true' ->
             lager:debug("endpoint is restricted from making this call, terminate", []),
@@ -37,7 +37,7 @@ execute_callflow(RouteWin, Call) ->
             {'restricted', Call};
         'false' ->
             lager:info("setting initial information about the call"),
-            {'ok', bootstrap_callflow_executer(RouteWin, Call)}
+            {'ok', bootstrap_callflow_executer(Call)}
     end.
 
 -spec should_restrict_call(kapps_call:call()) -> boolean().
@@ -215,13 +215,13 @@ get_callee_extension_info(Call) ->
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
--spec bootstrap_callflow_executer(kapi_route:win(), kapps_call:call()) -> kapps_call:call().
-bootstrap_callflow_executer(_RouteWin, Call) ->
+-spec bootstrap_callflow_executer(kapps_call:call()) -> kapps_call:call().
+bootstrap_callflow_executer(Call) ->
     Routines = [fun store_owner_id/1
                ,fun set_language/1
                ,fun include_denied_call_restrictions/1
                ,fun maybe_start_recording/1
-               ,fun execute_callflow/1
+               ,fun store_execute_callflow/1
                ,fun maybe_start_metaflow/1
                ],
     kapps_call:exec(Routines, Call).
@@ -335,7 +335,7 @@ filter_action({_, Action}) ->
 %% cf_exe_sup tree.
 %% @end
 %%------------------------------------------------------------------------------
--spec execute_callflow(kapps_call:call()) -> kapps_call:call().
-execute_callflow(Call) ->
+-spec store_execute_callflow(kapps_call:call()) -> kapps_call:call().
+store_execute_callflow(Call) ->
     lager:info("call has been setup, beginning to process the call"),
     kapps_call:kvs_store('cf_exe_pid', self(), Call).
