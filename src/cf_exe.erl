@@ -35,7 +35,9 @@
 -export([attempt/1, attempt/2]).
 -export([wildcard_is_empty/1]).
 -export([callid_update/2]).
--export([add_event_listener/2]).
+-export([add_event_listener/2
+        ,add_call_binding/2
+        ]).
 -export([next/1, next/2]).
 -export([update_call/1, update_call/2]).
 -export([add_termination_handler/2
@@ -162,6 +164,12 @@ add_event_listener(Srv, {_,_}=SpawnInfo) when is_pid(Srv) ->
     gen_server:cast(Srv, {'add_event_listener', SpawnInfo});
 add_event_listener(Call, {_,_}=SpawnInfo) ->
     add_event_listener(cf_exe_pid(Call), SpawnInfo).
+
+-spec add_call_binding(kapps_call:call() | pid(), kz_term:ne_binary()) -> 'ok'.
+add_call_binding(Srv, <<CallId/binary>>) when is_pid(Srv) ->
+    gen_server:call(Srv, {'add_call_binding', CallId});
+add_call_binding(Call, CallId) ->
+    add_call_binding(cf_exe_pid(Call), CallId).
 
 -spec add_termination_handler(kapps_call:call() | pid(), termination_handler()) -> 'ok'.
 add_termination_handler(Srv, {_,_,_}=Handler) when is_pid(Srv) ->
@@ -376,6 +384,10 @@ handle_call('get_call', _From, #state{call=Call}=State) ->
     {'reply', {'ok', Call}, State};
 handle_call('callid', _From, #state{call=Call}=State) ->
     {'reply', kapps_call:call_id_direct(Call), State};
+handle_call({'add_call_binding', CallId}, _From, State) ->
+    _ = kz_events:bind_call_id(CallId),
+    lager:info("added event binding for call id ~s", [CallId]),
+    {'reply', 'ok', State};
 handle_call('queue_name', _From, #state{queue=Q}=State) ->
     {'reply', Q, State};
 handle_call('control_queue_name', _From, #state{call=Call}=State) ->
@@ -917,7 +929,7 @@ handle_channel_transferor(Call, CallEvent) ->
             hard_stop(Call)
     end.
 
-log_transferor(undefined) ->
+log_transferor('undefined') ->
     lager:info("this callflow executor is transfering, terminate immediately");
 log_transferor(To) ->
     lager:info("this callflow executor is transfering to ~s, terminate immediately", [To]).
