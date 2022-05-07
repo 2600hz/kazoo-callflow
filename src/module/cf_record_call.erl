@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2021, 2600Hz
+%%% @copyright (C) 2012-2022, 2600Hz
 %%% @doc Handles starting/stopping a call recording.
 %%% @author James Aimonetti
 %%% @author Sponsored by Velvetech LLC, Implemented by SIPLABS LLC
@@ -14,7 +14,7 @@
 
 -behaviour(gen_cf_action).
 
--export([handle/2]).
+-export([handle/2, handle/3]).
 
 -include("callflow.hrl").
 

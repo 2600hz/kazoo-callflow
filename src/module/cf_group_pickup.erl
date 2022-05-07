@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2021, 2600Hz
+%%% @copyright (C) 2013-2022, 2600Hz
 %%% @doc Pickup a call in the specified group.
 %%%
 %%% <h4>Data options:</h4>
@@ -177,7 +177,7 @@ pickup_cmd(TargetCallId) ->
           {'error', 'failed'} |
           {'error', 'timeout'}.
 wait_for_pickup(Call) ->
-    case kapps_call_command:receive_event(10000) of
+    case kapps_call_command:receive_event(10 * ?MILLISECONDS_IN_SECOND) of
         {'ok', Evt} ->
             pickup_event(Call, kz_api:event_type(Evt), Evt);
         {'error', 'timeout'}=E ->

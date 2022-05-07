@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2014-2021, 2600Hz
+%%% @copyright (C) 2014-2022, 2600Hz
 %%% @doc Plays tones to the caller
 %%%
 %%% A tone object is made up of a list of tones and duration-on/off times.
@@ -17,7 +17,9 @@
 
 -include("callflow.hrl").
 
--export([handle/2]).
+-export([handle/2
+        ,convert_tones/1
+        ]).
 
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module
@@ -44,8 +46,12 @@ handle(Data, Call) ->
           {'ok', kz_json:object()} |
           {'error', atom()}.
 play_tones(Tones, Call) ->
-    _ = kapps_call_command:tones([convert_tone(Tone) || Tone <- Tones], Call),
+    _ = kapps_call_command:tones(convert_tones(Tones), Call),
     kapps_call_command:b_noop(Call).
+
+-spec convert_tones(kz_json:objects()) -> kzjson:objects().
+convert_tones(Tones) ->
+    [convert_tone(Tone) || Tone <- Tones].
 
 %% @doc convert foo_bar to amqp api Foo-Bar
 -spec convert_tone(kz_json:object()) -> kz_json:object().
