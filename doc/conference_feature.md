@@ -79,6 +79,7 @@ Key | Description | Type | Default | Required | Support Level
 `profile` | Profile configuration | `object()` |   | `false` |  
 `profile_name` | conference profile name | `string()` |   | `false` |  
 `require_moderator` | does the conference require a moderator | `boolean()` |   | `false` |  
+`video` | If false, video participants will join with video muted | `boolean()` |   | `false` |  
 `wait_for_moderator` | should members wait for a moderator before joining the conference | `boolean()` |   | `false` |  
 
 ### conferences.profile
