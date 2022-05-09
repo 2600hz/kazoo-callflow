@@ -24,6 +24,7 @@
                                 {'fail', kz_json:object()} |
                                 {'ok', kz_json:object()}.
 
+-define(APP, 'callflow').
 -define(APP_NAME, <<"callflow">>).
 -define(APP_VERSION, <<"4.0.0">> ).
 -define(CF_CONFIG_CAT, ?APP_NAME).
