@@ -17,7 +17,7 @@
 
 -include("callflow.hrl").
 
--type endpoint_get_error() :: kz_endpoint:build_errors() | 'endpoint_not_configured'.
+-type endpoint_get_error() :: kz_endpoint:build_errors() | 'endpoint_not_configured' | 'no_endpoints'.
 
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module, attempts to call an endpoint as defined
@@ -122,7 +122,11 @@ get_endpoints('undefined', _, _) ->
     {'error', 'endpoint_not_configured'};
 get_endpoints(UserId, Data, Call) ->
     Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
-    kz_endpoint:build(UserId, Params, Call).
+    case kz_endpoints:by_owner_id(UserId, Params, Call) of
+        [] -> {error, no_endpoints};
+        {error, _} = Err -> Err;
+        EPs -> {ok, EPs}
+    end.
 
 set_context_flags(Call, Data) ->
     Flags = lists:filtermap(fun is_context_flag/1, kz_json:to_proplist(Data)),
