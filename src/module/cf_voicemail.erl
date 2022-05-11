@@ -896,17 +896,6 @@ message_count_prompts(New, Saved) ->
     ,{'prompt', <<"vm-saved_messages">>}
     ].
 
-%%------------------------------------------------------------------------------
-%% @doc Returns the complete message-and-envelope audio prompt.
-%% @end
-%%------------------------------------------------------------------------------
--spec message_prompt(kz_json:objects(), binary(), non_neg_integer(), mailbox()) ->
-          kapps_call_command:audio_macro_prompts().
-message_prompt([H|_]=Messages, Message, Count, #mailbox{skip_envelope='false'}=Box) ->
-    message_number(Messages, Count) ++ message_content(Message, Box) ++ message_envelope(H, Box) ++ message_menu();
-message_prompt(Messages, Message, Count, #mailbox{skip_envelope='true'}=Box) ->
-    lager:debug("mailbox is set to skip playing message envelope"),
-    message_number(Messages, Count) ++ message_content(Message, Box) ++ message_menu().
 
 %%------------------------------------------------------------------------------
 %% @doc Returns the message number audio macro.
@@ -972,6 +961,11 @@ play_messages(Messages, Count, Box, Call) ->
 %%------------------------------------------------------------------------------
 %% @doc Plays the current message and the menu, then handles the message and
 %% continues traversing the message list based on the user's menu choice.
+%%
+%% Depending on the mailboxes `play_envelope_action' we construct the message
+%% prompt so that we can tell if the user hangs up before or during/after the
+%% message has been played. This affects if we move the vm to the saved folder
+%% or leave it in the current folder.
 %% @end
 %%------------------------------------------------------------------------------
 -spec play_messages(kz_json:objects(), kz_json:objects(), non_neg_integer(), mailbox(), kapps_call:call()) ->
@@ -979,13 +973,28 @@ play_messages(Messages, Count, Box, Call) ->
 play_messages([CurrentMessage|_]=Messages
              ,PrevMessages
              ,Count
-             ,Box
+             ,#mailbox{play_envelope_action=PlayEnvelopeAction}=Box
              ,Call
              ) ->
     AccountId = kapps_call:account_id(Call),
-    Message = kvm_message:media_url(AccountId, CurrentMessage),
-    lager:info("playing mailbox message ~p (~s)", [Count, Message]),
-    Prompt = message_prompt(Messages, Message, Count, Box),
+    CurrentMessageUrl = kvm_message:media_url(AccountId, CurrentMessage),
+    lager:info("playing mailbox message ~p (~s)", [Count, CurrentMessageUrl]),
+
+    NumberNoopId = kapps_call_command:audio_macro(message_number(Messages, Count), Call),
+    _ = kapps_call_command:wait_for_noop(Call, NumberNoopId),
+    Prompt = case PlayEnvelopeAction of
+                 'play_before' ->
+                     lager:debug("mailbox is set to play message envelope before message"),
+                     EnvelopeNoopId = kapps_call_command:audio_macro(message_envelope(CurrentMessage, Box), Call),
+                     _ = kapps_call_command:wait_for_noop(Call, EnvelopeNoopId),
+                     message_content(CurrentMessageUrl, Box) ++ message_menu();
+                 'play_after' ->
+                     lager:debug("mailbox is set to play message envelope after message"),
+                     message_content(CurrentMessageUrl, Box) ++ message_envelope(CurrentMessage, Box) ++ message_menu();
+                 'skip' ->
+                     lager:debug("mailbox is set to skip playing message envelope"),
+                     message_content(CurrentMessageUrl, Box) ++ message_menu()
+             end,
     play_message_menu(Prompt, Messages, PrevMessages, Count, Box, Call);
 play_messages([], _, _, _, _) ->
     lager:info("all messages in folder played to caller"),
@@ -993,6 +1002,9 @@ play_messages([], _, _, _, _) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Plays the message menu prompt and handles the user's choice.
+%% If the user hangs up the call before listening to the message then do
+%% nothing. If the user hangs up during or after the message then move the
+%% message to the saved folder.
 %% @end
 %%------------------------------------------------------------------------------
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), kz_json:objects(), kz_json:objects(), non_neg_integer(), mailbox(), kapps_call:call()) ->
@@ -1049,10 +1061,14 @@ play_message_menu(Prompt
             play_messages(Messages, PrevMessages, Count, Box, Call);
         {'ok', 'callback'} ->
             maybe_handle_vm_callback(CurrentMessage, Messages, PrevMessages, Count, Box, Call);
-        {'error', _} ->
-            lager:info("error during message playback"),
+        {'error', 'channel_hungup'} ->
+            lager:info("caller hungup during/after playing vm recording, moving message to saved folder"),
             _ = kapps_call_command:flush(Call),
-            _ = save_message(CurrentMessage, AccountId, Call),
+            _ = save_message(CurrentMessage, BoxId, AccountId, Call),
+            'ok';
+        {'error', _} ->
+            lager:info("error during message playback, leaving message in current folder"),
+            _ = kapps_call_command:flush(Call),
             'ok'
     end.
 
