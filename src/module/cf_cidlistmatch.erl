@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Handles inspection of incoming caller ID and branching to a child
 %%% callflow node accordingly.
 %%%
@@ -66,7 +66,7 @@ is_matching_regexp(AccountDb, ListId, Number) ->
         {'ok', Regexps} ->
             Patterns = [kz_json:get_value(<<"value">>, X)
                         || X <- Regexps,
-                           X =/= null
+                           X =/= 'null'
                        ],
             match_regexps(Patterns, Number);
         _ ->

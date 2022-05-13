@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -80,7 +80,7 @@ send_page(Endpoints, Timeout, CCVs, Options, Call0) ->
                              ).
 
 -spec get_endpoints(kz_term:api_objects(), kapps_call:call()) -> kz_json:objects().
-get_endpoints(undefined, Call) -> get_endpoints([], Call);
+get_endpoints('undefined', Call) -> get_endpoints([], Call);
 get_endpoints(Members, Call) ->
     S = self(),
     Builders = [kz_process:spawn(

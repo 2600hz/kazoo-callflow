@@ -14,7 +14,7 @@ Key | Description | Type | Default | Required | Support Level
 `method` | What HTTP method to use when sending the recording | `string('put' | 'post')` | `put` | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
 `time_limit` | Time limit, in seconds, for the recording | `integer()` | `3600` | `false` |  
-`url` | The URL to use when sending the recording for storage | `string()` |   | `false` |  
+`url` | The URL to use when sending the recording for storage | `string(7..)` |   | `false` |  
 
 
 

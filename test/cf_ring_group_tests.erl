@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2020, 2600Hz
+%%% @copyright (C) 2010-2022, 2600Hz
 %%% @doc
 %%% @author SIPLABS LLC (Ilya Ashchepkov)
 %%%
@@ -232,7 +232,7 @@ help_10392_data(TestEndpoints, Strategy) ->
                       ,{<<"strategy">>, Strategy}
                       ,{<<"timeout">>, 30}
                       ,{<<"repeats">>, 1}
-                      ,{<<"ignore_forward">>, true}
+                      ,{<<"ignore_forward">>, 'true'}
                       ]).
 
 help_10392_add_source(RGMember) ->

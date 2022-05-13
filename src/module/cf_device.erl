@@ -42,10 +42,9 @@ handle(Data, Call) ->
             cf_exe:continue(Call)
     end.
 
--spec stop(kapps_call:call(), kz_term:api_ne_binary()) -> ok.
+-spec stop(kapps_call:call(), kz_term:api_ne_binary()) -> 'ok'.
 stop(Call, <<"hangup">>) -> cf_exe:hard_stop(Call);
 stop(Call, _) -> cf_exe:stop(Call).
-
 
 -spec maybe_handle_bridge_failure(any(), kapps_call:call()) -> 'ok'.
 maybe_handle_bridge_failure(Reason, Call) ->

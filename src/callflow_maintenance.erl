@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -41,6 +41,8 @@
         ]).
 
 -include("callflow.hrl").
+
+-elvis([{elvis_style, no_debug_call, disable}]).
 
 -define(DOLLAR_SIGN, 36). % = $\$ but makes fmt wonky atm
 

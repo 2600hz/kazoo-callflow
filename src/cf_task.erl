@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2021, 2600Hz
+%%% @copyright (C) 2010-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -56,7 +56,7 @@ start_link(Call, Fun, Args) ->
 init([Call, Callback, Args]) ->
     _ = kapps_call:put_callid(Call),
     kz_events:bind_call_id(kapps_call:call_id_direct(Call)),
-    Channel = kapps_call:kvs_fetch(consumer_channel, Call),
+    Channel = kapps_call:kvs_fetch('consumer_channel', Call),
     Queue = kapi:decode_queue(kapps_call:controller_queue(Call)),
     ControllerQ = kapi:encode_pid(Queue, self()),
     kz_amqp_channel:consumer_channel(Channel),

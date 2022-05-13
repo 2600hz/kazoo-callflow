@@ -99,7 +99,7 @@ should_hard_stop_default(Call) ->
 -spec after_success_bridge(kapps_call:call(), kz_term:api_ne_binary(), boolean()) -> 'ok'.
 after_success_bridge(Call, <<"hangup">>, _) ->
     cf_exe:hard_stop(Call);
-after_success_bridge(Call, _AnswerState, true) ->
+after_success_bridge(Call, _AnswerState, 'true') ->
     kapps_call_command:queued_hangup(Call),
     cf_exe:hard_stop(Call);
 after_success_bridge(Call, _, _) ->

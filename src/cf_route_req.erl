@@ -65,10 +65,11 @@ skip_prepend(Call) ->
         orelse kapps_call:is_call_forward(Call)
         orelse kz_term:is_true(kapps_call:custom_sip_header(<<"X-Preferred-Media">>, Call)).
 
--spec maybe_prepend_preflow(kapps_call:call(), kzd_callflows:doc()) -> 'ok'.
+-spec maybe_prepend_preflow(kapps_call:call(), kzd_callflows:doc()) -> kzd_callflows:doc().
 maybe_prepend_preflow(Call, Callflow) ->
     maybe_prepend_preflow(Call, Callflow, skip_prepend(Call)).
 
+-spec maybe_prepend_preflow(kapps_call:call(), kzd_callflows:doc(), boolean()) -> kzd_callflows:doc().
 maybe_prepend_preflow(_Call, Callflow, 'true') ->
     lager:info("request is the result of a transfer or forward, skipping preflow"),
     Callflow;

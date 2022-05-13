@@ -152,8 +152,8 @@ should_hard_stop_default(Call) ->
 
 -spec after_success_bridge(kz_term:api_ne_binary(), boolean()) -> 'hard_stop' | 'hangup' | 'stop'.
 after_success_bridge(<<"hangup">>, _) -> 'hard_stop';
-after_success_bridge(_AnswerState, true) -> 'hangup';
-after_success_bridge(_AnswerState, false) -> 'stop'.
+after_success_bridge(_AnswerState, 'true') -> 'hangup';
+after_success_bridge(_AnswerState, 'false') -> 'stop'.
 
 -spec get_endpoints(kz_json:object(), kapps_call:call()) -> kz_json:objects().
 get_endpoints(Data, Call) ->

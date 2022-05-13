@@ -244,18 +244,18 @@ call_forward_basic_vars(Call, Acc) ->
 
 call_forward_export_vars(Call, Acc) ->
     case kapps_call:custom_channel_var(<<"Call-Forward-Exports">>, Call) of
-        undefined -> Acc;
+        'undefined' -> Acc;
         Exports -> call_forward_export_vars(Call, Acc, Exports)
     end.
 
 call_forward_export_vars(Call, CCVs, Exports) ->
-    Vars = binary:split(Exports, <<"|">>, [global]),
+    Vars = binary:split(Exports, <<"|">>, ['global']),
     Fun = fun(Var, Acc) -> call_forward_export_var(Call, Acc, Var) end,
     lists:foldl(Fun, CCVs, Vars).
 
 call_forward_export_var(Call, Acc, Var) ->
     case kapps_call:custom_channel_var(Var, Call) of
-        undefined -> Acc;
+        'undefined' -> Acc;
         Value -> [{Var, Value} | Acc]
     end.
 

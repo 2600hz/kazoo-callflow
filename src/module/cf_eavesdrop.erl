@@ -67,23 +67,18 @@ fields_to_check() ->
 maybe_allowed_to_eavesdrop(Data, Call) ->
     cf_util:check_value_of_fields(fields_to_check(), 'false', Data, Call).
 
--spec eavesdrop_channel(kz_term:ne_binaries(), kapps_call:call()) -> 'ok'.
+-spec eavesdrop_channel(kz_term:ne_binaries(), kapps_call:call()) -> any().
 eavesdrop_channel(Usernames, Call) ->
     case cf_util:find_channels(Usernames, Call) of
         [] -> no_channels(Call);
         Channels -> eavesdrop_a_channel(Channels, Call)
     end.
 
--spec eavesdrop_a_channel(kz_json:objects(), kapps_call:call()) -> 'ok'.
+-spec eavesdrop_a_channel(kz_json:objects(), kapps_call:call()) ->
+          {'ok', kz_json:object()} |
+          {'error', atom() | kz_json:object()}.
 eavesdrop_a_channel(Channels, Call) ->
-    MyUUID = kapps_call:call_id(Call),
-    MyMediaServer = kapps_call:switch_nodename(Call),
-
-    lager:debug("looking for channels on my node ~s that aren't me", [MyMediaServer]),
-
-    {_, _, SortedChannels} = lists:foldl(fun channels_sort/2, {MyUUID, MyMediaServer, {[], []}}, Channels),
-
-    case SortedChannels of
+    case sort_channels(Channels, Call) of
         {[], []} ->
             lager:debug("no channels available to eavesdrop"),
             no_channels(Call);
@@ -97,15 +92,29 @@ eavesdrop_a_channel(Channels, Call) ->
             eavesdrop_call(LocalChannel, Call)
     end.
 
+%% sort calls into {LocalToCallerFreeSWITCH, RemoteFreeSWITCH}
+-spec sort_channels(kz_json:objects(), kapps_call:call()) -> {kz_json:objects(), kz_json:objects()}.
+sort_channels(Channels, Call) ->
+    MyUUID = kapps_call:call_id(Call),
+    MyMediaServer = kapps_call:switch_nodename(Call),
+
+    lager:debug("looking for channels on my node ~s that aren't me", [MyMediaServer]),
+
+    {_, _, SortedChannels} = lists:foldl(fun channels_sort/2
+                                        ,{MyUUID, MyMediaServer, {[], []}}
+                                        ,Channels
+                                        ),
+    SortedChannels.
+
 -spec remote_contact(kapps_call:call()) -> kz_term:ne_binary().
 remote_contact(Call) ->
     erlang:iolist_to_binary(["sip:", kapps_call:request(Call)]).
 
--spec interaction_id(kz_json:objects()) -> kz_term:ne_binary().
+-spec interaction_id(kz_json:object()) -> kz_term:api_ne_binary().
 interaction_id(JObj) ->
     kz_json:get_ne_binary_value(<<"interaction_id">>, JObj).
 
--spec switch_url(kz_json:objects()) -> kz_term:ne_binary().
+-spec switch_url(kz_json:object()) -> kz_term:api_ne_binary().
 switch_url(JObj) ->
     kz_json:get_ne_binary_value(<<"switch_url">>, JObj).
 
@@ -133,14 +142,14 @@ channels_sort(Channel, {MyUUID, MyMediaServer, {Local, Remote}} = Acc) ->
 -spec eavesdrop_call(kz_json:object(), kapps_call:call()) -> 'ok'.
 eavesdrop_call(Channel, Call) ->
     UUID = kz_json:get_ne_binary_value(<<"uuid">>, Channel),
-    {ok, _} = kapps_call_command:b_answer(Call),
+    {'ok', _} = kapps_call_command:b_answer(Call),
     lager:info("caller ~s is listening to channel ~s", [kapps_call:caller_id_name(Call), UUID]),
     Result = kapps_call_command:b_eavesdrop(UUID, Call),
     handle_eavesdrop_result(Result, Call).
 
 -spec handle_eavesdrop_result(kapps_call_command:command_result(), kapps_call:call()) -> 'ok'.
-handle_eavesdrop_result({error, timeout}, Call) -> cf_exe:stop(Call);
-handle_eavesdrop_result({error, channel_hungup}, Call) -> cf_exe:hard_stop(Call);
+handle_eavesdrop_result({'error', 'timeout'}, Call) -> cf_exe:stop(Call);
+handle_eavesdrop_result({'error', 'channel_hungup'}, Call) -> cf_exe:hard_stop(Call);
 handle_eavesdrop_result({_, JObj}, Call) ->
     case kz_call_event:channel_answer_state(JObj) of
         <<"hangup">> -> cf_exe:hard_stop(Call);

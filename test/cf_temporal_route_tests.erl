@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -1060,5 +1060,5 @@ rules_doc(StartDate, EndDate, Exclude) ->
               ],
     kz_doc:setters(kzd_temporal_rules:new(), Setters).
 
--spec rule_id(#rule{}) -> kz_term:ne_binary().
+-spec rule_id(rule()) -> kz_term:ne_binary().
 rule_id(#rule{id = Id}) -> Id.

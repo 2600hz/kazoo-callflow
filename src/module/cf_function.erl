@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2021, 2600Hz
+%%% @copyright (C) 2012-2022, 2600Hz
 %%% @doc Accept customized `dialplan'.
 %%%
 %%% <h4>Data options:</h4>
@@ -55,7 +55,8 @@ handle(Data, Call) ->
             cf_exe:continue(Call)
     end.
 
--spec run_function(kz_term:ne_binary(), kapps_call:call()) -> {'ok', kz_json:object()} |
+-spec run_function(kz_term:ne_binary(), kapps_call:call()) ->
+          {'ok', kz_json:object()} |
           kz_datamgr:data_error().
 run_function(FunctionId, Call) ->
     BaseParams = kzt_kazoo:req_params(Call),
@@ -66,8 +67,6 @@ run_function(FunctionId, Call) ->
     kz_datamgr:show(?KZ_FUNCTIONS_DB, <<"functions/wh">>, FunctionId, options(QueryString)).
 
 -spec options(iodata()) -> [{'query_string', binary()}].
-options([]) -> [];
-options(<<>>) -> [];
 options(QueryString) ->
     [{'query_string', kz_term:to_binary(QueryString)}].
 

@@ -56,27 +56,27 @@ init([]) ->
 
 -spec instance_name() -> kz_term:ne_binary().
 instance_name() ->
-    case kz_app_config:is_true(?APP, <<"callflow_listeners_shared_instance">>, false) of
-        true -> <<"shared">>;
-        false -> kz_binary:rand_hex(16)
+    case kz_app_config:is_true(?APP, <<"callflow_listeners_shared_instance">>, 'false') of
+        'true' -> <<"shared">>;
+        'false' -> kz_binary:rand_hex(16)
     end.
 
--spec forward(term()) -> any().
+-spec forward(Msg) -> {'forward', Msg}.
 forward(Msg) ->
     Listeners = supervisor:which_children(?MODULE),
     Size = length(Listeners),
     Selected = rand:uniform(Size),
     {_, Listener, _, _} = lists:nth(Selected, Listeners),
-    Listener ! {forward, Msg}.
+    Listener ! {'forward', Msg}.
 
--spec start_workers(pid()) -> ok.
+-spec start_workers(pid()) -> 'ok'.
 start_workers(Pid) ->
     Workers = kz_app_config:get_integer(?APP, <<"callflow_listeners">>, 5),
     Pause = kz_app_config:get_integer(?APP, <<"callflow_listeners_start_pause_ms">>, ?MILLISECONDS_IN_SECOND * 3),
     lager:debug("starting ~B workers with ~B pause between", [Workers, Pause]),
     lists:foreach(fun(_) -> start_worker(Pid, Pause) end, lists:seq(1, Workers)).
 
--spec start_worker(pid(), integer()) -> ok.
+-spec start_worker(pid(), integer()) -> 'ok'.
 start_worker(Pid, Pause) ->
     _ = supervisor:start_child(Pid, []),
     timer:sleep(Pause).

@@ -29,15 +29,15 @@
 handle(Data, Call) ->
     UserId = kz_json:get_ne_binary_value(<<"id">>, Data),
     case get_endpoints(UserId, Data, Call) of
-        {'ok', Endpoints} -> maybe_bridge(Data, Call, Endpoints);
+        {'ok', Endpoints} -> bridge(Data, Call, Endpoints);
         {'error', Error} -> handle_error(Call, UserId, Error, should_block_self(Call))
     end.
 
--spec handle_error(kapps_call:call(), kz_term:api_ne_binary(), endpoint_get_error(), boolean()) -> ok.
-handle_error(Call, UserId, 'endpoint_called_self', true) ->
+-spec handle_error(kapps_call:call(), kz_term:api_ne_binary(), endpoint_get_error(), boolean()) -> 'ok'.
+handle_error(Call, UserId, 'endpoint_called_self', 'true') ->
     lager:warning("endpoint ~s called self with transfer/cfwd", [UserId]),
     cf_exe:stop(Call, <<"DESTINATION_OUT_OF_ORDER">>);
-handle_error(Call, UserId, 'owner_called_self', true) ->
+handle_error(Call, UserId, 'owner_called_self', 'true') ->
     lager:warning("owner ~s called self with transfer/cfwd", [UserId]),
     cf_exe:stop(Call, <<"DESTINATION_OUT_OF_ORDER">>);
 handle_error(Call, UserId, Error, _) ->
@@ -49,20 +49,10 @@ should_block_self(Call) ->
     kapps_call:is_call_forward(Call)
         orelse kapps_call:is_transfer(Call).
 
--spec maybe_bridge(kz_json:object(), kapps_call:call(), kz_json:objects()) -> 'ok'.
-maybe_bridge(_Data, Call, []) ->
-    lager:notice("user ~s has no endpoints"
-                ,[kz_json:get_ne_binary_value(<<"id">>, _Data)]
-                ),
-    cf_exe:continue(Call);
-maybe_bridge(Data, Call0, Endpoints) ->
-    %% maybe start recording on inbound leg
+-spec bridge(kz_json:object(), kapps_call:call(), kz_json:objects()) -> 'ok'.
+bridge(Data, Call0, Endpoints) ->
     Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
 
-    bridge(Data, Call, Endpoints).
-
--spec bridge(kz_json:object(), kapps_call:call(), kz_json:objects()) -> 'ok'.
-bridge(Data, Call, Endpoints) ->
     FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, kapps_call:custom_channel_var(<<"Require-Fail-On-Single-Reject">>, Call)),
     Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
     Strategy = kz_json:get_ne_binary_value(<<"strategy">>, Data, <<"simultaneous">>),
@@ -99,10 +89,9 @@ bridge(Data, Call, Endpoints) ->
             cf_exe:continue(Call)
     end.
 
--spec stop(kapps_call:call(), kz_term:api_ne_binary()) -> ok.
+-spec stop(kapps_call:call(), kz_term:api_ne_binary()) -> 'ok'.
 stop(Call, <<"hangup">>) -> cf_exe:hard_stop(Call);
 stop(Call, _) -> cf_exe:stop(Call).
-
 
 -spec maybe_handle_bridge_failure(any(), kapps_call:call()) -> 'ok'.
 maybe_handle_bridge_failure(Reason, Call) ->
@@ -117,15 +106,16 @@ maybe_handle_bridge_failure(Reason, Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_endpoints(kz_term:api_binary(), kz_json:object(), kapps_call:call()) ->
-          {'ok', kz_json:objects()} | {error, endpoint_get_error()}.
+          {'ok', [kz_json:object(),...]} |
+          {'error', endpoint_get_error()}.
 get_endpoints('undefined', _, _) ->
     {'error', 'endpoint_not_configured'};
 get_endpoints(UserId, Data, Call) ->
     Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
     case kz_endpoints:by_owner_id(UserId, Params, Call) of
-        [] -> {error, no_endpoints};
-        {error, _} = Err -> Err;
-        EPs -> {ok, EPs}
+        [] -> {'error', 'no_endpoints'};
+        {'error', _} = Err -> Err;
+        EPs -> {'ok', EPs}
     end.
 
 set_context_flags(Call, Data) ->
