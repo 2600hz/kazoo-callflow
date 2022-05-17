@@ -38,7 +38,7 @@
 %% Whether or not to branch extension when caller dials an extension.
 %% If true, when caller dials an extension, call will be branched, once that branch finishes
 %% if menu has a default action set, that action will be executed.
--define(BRANCH_EXTENSION, kapps_config:get_boolean(?MOD_CONFIG_CAT, <<"branch_extension">>, 'true')).
+-define(BRANCH_EXTENSION, kapps_config:get_boolean(?MOD_CONFIG_CAT, <<"branch_extension">>, 'false')).
 
 -record(cf_menu_data, {menu_id :: kz_term:api_ne_binary()
                       ,name = <<>> :: binary()
