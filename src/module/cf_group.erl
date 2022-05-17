@@ -94,7 +94,7 @@ should_hard_stop(Call, Data) -> kz_json:is_true(?HARD_STOP_KEY, Data, should_har
 -spec should_hard_stop_default(kapps_call:call()) -> boolean().
 should_hard_stop_default(Call) ->
     AccountId = kapps_call:account_id(Call),
-    kapps_account_config:get_global(AccountId, ?CF_CONFIG_CAT, ?HARD_STOP_KEY, 'false').
+    kapps_account_config:get_global(AccountId, ?CF_CONFIG_CAT, ?HARD_STOP_KEY, 'true').
 
 -spec after_success_bridge(kapps_call:call(), kz_term:api_ne_binary(), boolean()) -> 'ok'.
 after_success_bridge(Call, <<"hangup">>, _) ->
