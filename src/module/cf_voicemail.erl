@@ -32,6 +32,8 @@
 -export([handle/2]).
 -export([new_message/4]).
 
+-elvis([{elvis_style, god_modules, disable}]).
+
 -include("callflow.hrl").
 -include_lib("kazoo_stdlib/include/kazoo_json.hrl").
 
@@ -189,6 +191,7 @@
 
 -record(mailbox, {mailbox_id :: kz_term:api_ne_binary()
                  ,mailbox_number = <<>> :: binary()
+                 ,mailbox_doc :: kzd_vmboxes:doc() | 'undefined'
                  ,exists = 'false' :: boolean()
                  ,skip_instructions = 'false' :: boolean()
                  ,skip_greeting = 'false' :: boolean()
@@ -643,7 +646,14 @@ record_voicemail(AttachmentName, #mailbox{max_message_length=MaxMessageLength
     kapps_call_command:tones([Tone], Call),
     lager:info("composing new voicemail to ~s", [AttachmentName]),
     Routines = [{fun kapps_call:set_message_left/2, 'true'}],
-    case kapps_call_command:b_record(AttachmentName, ?ANY_DIGIT, kz_term:to_binary(MaxMessageLength), Call) of
+    case kapps_call_command:b_record(AttachmentName
+                                    ,?ANY_DIGIT
+                                    ,kz_term:to_binary(MaxMessageLength)
+                                    ,silence_threshold(Box)
+                                    ,silence_hits(Box)
+                                    ,Call
+                                    )
+    of
         {'ok', Msg} ->
             Length = kz_json:get_integer_value(<<"Length">>, Msg, 0),
             case kz_call_event:channel_answer_state(Msg) =:= <<"answered">>
@@ -1965,7 +1975,7 @@ get_mailbox_profile(Data, Call) ->
         {'ok', MailboxJObj} ->
             MailboxId = kz_doc:id(MailboxJObj),
             lager:info("loaded voicemail box ~s", [MailboxId]),
-            Default = #mailbox{},
+            Default = #mailbox{mailbox_doc=MailboxJObj},
 
             %% Don't check if the voicemail box belongs to the owner (by default) if the call was not
             %% specifically to him, IE: calling a ring group and going to voicemail should not check
@@ -2494,3 +2504,30 @@ send_mwi_update(#mailbox{account_db=AccountDb
                         ,mailbox_id=BoxId
                         }) ->
     kvm_mwi:notify_vmbox(AccountDb, BoxId).
+
+-spec silence_threshold(mailbox()) -> pos_integer().
+silence_threshold(#mailbox{mailbox_doc=Doc}) ->
+    silence_threshold(kzd_vmboxes:silence_threshold(Doc)
+                     ,kapps_config:get_integer(?CF_CONFIG_CAT
+                                              ,[?KEY_VOICEMAIL, <<"silence_threshold">>]
+                                              )
+                     ).
+
+-spec silence_threshold(kz_term:api_integer(), kz_term:api_integer()) -> pos_integer().
+silence_threshold('undefined', 'undefined') -> 200;
+silence_threshold('undefined', ConfigThreshold) -> ConfigThreshold;
+silence_threshold(BoxThreshold, _ConfigThreshold) -> BoxThreshold.
+
+
+-spec silence_hits(mailbox()) -> pos_integer().
+silence_hits(#mailbox{mailbox_doc=Doc}) ->
+    silence_hits(kzd_vmboxes:silence_hits(Doc)
+                ,kapps_config:get_integer(?CF_CONFIG_CAT
+                                         ,[?KEY_VOICEMAIL, <<"silence_hits">>]
+                                         )
+                ).
+
+-spec silence_hits(kz_term:api_integer(), kz_term:api_integer()) -> pos_integer().
+silence_hits('undefined', 'undefined') -> 5;
+silence_hits('undefined', ConfigThreshold) -> ConfigThreshold;
+silence_hits(BoxThreshold, _ConfigThreshold) -> BoxThreshold.
