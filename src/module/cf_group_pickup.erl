@@ -41,6 +41,8 @@
 
 -export([handle/2]).
 
+-type acc_channels() :: {kz_json:objects(), kz_json:objects()}.
+
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module sends an arbitrary response back to the
 %% call originator.
@@ -102,21 +104,19 @@ connect_to_a_channel(Channels, Call) ->
         {[], []} ->
             lager:debug("no channels available to pickup"),
             no_channels_ringing(Call);
-        {[], [RemoteUUID|_Remote]} ->
-            lager:debug("no unanswered calls on my media server, trying ~s", [RemoteUUID]),
-            intercept_call(RemoteUUID, Call);
-        {[LocalUUID|_Cs], _} ->
-            lager:debug("found a call (~s) on my media server", [LocalUUID]),
-            intercept_call(LocalUUID, Call)
+        {[], [RemoteChannel|_Remote]} ->
+            lager:debug("no unanswered calls on my media server, trying ~s", [channel_uuid(RemoteChannel)]),
+            intercept_call(RemoteChannel, Call);
+        {[LocalChannel|_Local], _} ->
+            lager:debug("found a call (~s) on my media server", [channel_uuid(LocalChannel)]),
+            intercept_call(LocalChannel, Call)
     end.
 
--spec sort_channels(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary()) ->
-          {kz_term:ne_binaries(), kz_term:ne_binaries()}.
+-spec sort_channels(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary()) -> acc_channels().
 sort_channels(Channels, MyUUID, MyMediaServer) ->
     sort_channels(Channels, MyUUID, MyMediaServer, {[], []}).
 
--spec sort_channels(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary(), {kz_term:ne_binaries(), kz_term:ne_binaries()}) ->
-          {kz_term:ne_binaries(), kz_term:ne_binaries()}.
+-spec sort_channels(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary(), acc_channels()) -> acc_channels().
 sort_channels([], _MyUUID, _MyMediaServer, Acc) -> Acc;
 sort_channels([Channel|Channels], MyUUID, MyMediaServer, Acc) ->
     lager:debug("channel: c: ~s a: ~s n: ~s oleg: ~s", [kz_json:get_ne_binary_value(<<"uuid">>, Channel)
@@ -124,37 +124,47 @@ sort_channels([Channel|Channels], MyUUID, MyMediaServer, Acc) ->
                                                        ,kz_json:get_ne_binary_value(<<"node">>, Channel)
                                                        ,kz_json:get_ne_binary_value(<<"other_leg">>, Channel)
                                                        ]),
-    case kz_json:is_true(<<"answered">>, Channel) of
+    case channel_is_answered(Channel) of
         'true' ->
             sort_channels(Channels, MyUUID, MyMediaServer, Acc);
         'false' ->
-            maybe_add_unanswered_leg(Channels, MyUUID, MyMediaServer, Acc, Channel)
+            sort_channels(Channels, MyUUID, MyMediaServer, maybe_add_unanswered_leg(MyUUID, MyMediaServer, Acc, Channel))
     end.
 
--spec maybe_add_unanswered_leg(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary(), {kz_term:ne_binaries(), kz_term:ne_binaries()}, kz_json:object()) ->
-          {kz_term:ne_binaries(), kz_term:ne_binaries()}.
-maybe_add_unanswered_leg(Channels, MyUUID, MyMediaServer, {Local, Remote}=Acc, Channel) ->
-    case kz_json:get_ne_binary_value(<<"node">>, Channel) of
+-spec maybe_add_unanswered_leg(kz_term:ne_binary(), kz_term:ne_binary(), acc_channels(), kz_json:object()) -> acc_channels().
+maybe_add_unanswered_leg(MyUUID, MyMediaServer, Acc, Channel) ->
+    maybe_add_unanswered_leg(MyUUID, MyMediaServer, channel_uuid(Channel), Acc, Channel).
+
+-spec maybe_add_unanswered_leg(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), acc_channels(), kz_json:object()) -> acc_channels().
+maybe_add_unanswered_leg(MyUUID, _MyMediaServer, MyUUID, Acc, _Channel) -> Acc;
+maybe_add_unanswered_leg(_MyUUID, MyMediaServer, _UUID, {Local, Remote}, Channel) ->
+    case channel_node(Channel) of
         MyMediaServer ->
-            case kz_json:get_ne_binary_value(<<"uuid">>, Channel) of
-                MyUUID ->
-                    sort_channels(Channels, MyUUID, MyMediaServer, Acc);
-                _UUID ->
-                    sort_channels(Channels, MyUUID, MyMediaServer, {maybe_add_other_leg(Channel, Local), Remote})
-            end;
+            {[Channel | Local], Remote};
         _OtherMediaServer ->
-            sort_channels(Channels, MyUUID, MyMediaServer, {Local, maybe_add_other_leg(Channel, Remote)})
+            {Local, [Channel | Remote]}
     end.
 
--spec maybe_add_other_leg(kz_json:object(), kz_term:ne_binaries()) -> kz_term:ne_binaries().
-maybe_add_other_leg(Channel, Legs) ->
-    case kz_json:get_ne_binary_value(<<"other_leg">>, Channel) of
-        'undefined' -> Legs;
-        Leg -> [Leg | Legs]
-    end.
+-spec channel_interaction_id(kz_json:object()) -> kz_term:api_ne_binary().
+channel_interaction_id(Channel) ->
+    kz_json:get_ne_binary_value(<<"interaction_id">>, Channel).
 
--spec intercept_call(kz_term:ne_binary(), kapps_call:call()) -> 'ok'.
-intercept_call(UUID, Call) ->
+-spec channel_node(kz_json:object()) -> kz_term:api_ne_binary().
+channel_node(Channel) ->
+    kz_json:get_ne_binary_value(<<"node">>, Channel).
+
+-spec channel_uuid(kz_json:object()) -> kz_term:api_ne_binary().
+channel_uuid(Channel) ->
+    kz_json:get_ne_binary_value(<<"uuid">>, Channel).
+
+-spec channel_is_answered(kz_json:object()) -> kz_term:api_ne_binary().
+channel_is_answered(Channel) ->
+    kz_json:is_true(<<"answered">>, Channel).
+
+-spec intercept_call(kz_json:object(), kapps_call:call()) -> 'ok'.
+intercept_call(Channel, Call) ->
+    UUID = channel_uuid(Channel),
+    kapps_call_command:set(kz_json:from_list([{<<?CALL_INTERACTION_ID>>, channel_interaction_id(Channel)}]), Call),
     _ = kapps_call_command:send_command(pickup_cmd(UUID), Call),
     case wait_for_pickup(Call) of
         {'error', _E} ->
@@ -191,11 +201,23 @@ wait_for_pickup(Call) ->
 pickup_event(_Call, {<<"error">>, <<"dialplan">>}, Evt) ->
     lager:debug("error in dialplan: ~s", [kz_json:get_ne_binary_value(<<"Error-Message">>, Evt)]),
     {'error', 'failed'};
-pickup_event(_Call, {<<"call_event">>,<<"CHANNEL_BRIDGE">>}, _Evt) ->
-    lager:debug("channel bridged to ~s", [kz_json:get_ne_binary_value(<<"Other-Leg-Call-ID">>, _Evt)]);
+pickup_event(Call, {<<"call_event">>,<<"CHANNEL_BRIDGE">>}, Event) ->
+    publish_usurp(Call, Event),
+    lager:debug("channel bridged to ~s", [kz_json:get_ne_binary_value(<<"Other-Leg-Call-ID">>, Event)]);
 pickup_event(Call, _Type, _Evt) ->
     lager:debug("unhandled evt ~p", [_Type]),
     wait_for_pickup(Call).
+
+publish_usurp(Call, Event) ->
+    CallId = kz_json:get_ne_binary_value(<<"Other-Leg-Call-ID">>, Event),
+    FetchId = kapps_call:fetch_id(Call),
+    Usurp = [{<<"Call-ID">>, CallId}
+            ,{<<"Fetch-ID">>, FetchId}
+            ,{<<"Reason">>, <<"intercepted">>}
+            | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
+            ],
+    lager:debug("sending control usurp for fetch-id ~s(~s)", [FetchId, CallId]),
+    cf_exe:amqp_send(Call, Usurp, fun(P) -> kapi_call:publish_usurp_control(CallId, P) end).
 
 -spec find_channels(kz_term:ne_binaries()) -> kz_json:objects().
 find_channels(DeviceIds) ->
@@ -213,11 +235,19 @@ find_channels(DeviceIds) ->
             lager:debug("failed to get channels: ~p", [_E]),
             [];
         {_, JObjs} ->
-            lists:foldl(fun(JObj, Channels) ->
-                                kz_json:get_value(<<"Channels">>, JObj, [])
-                                    ++ Channels
-                        end, [], JObjs)
+            channels_from_replies(JObjs)
     end.
+
+channels_from_replies(JObjs) ->
+    Channels = lists:foldl(fun channels_from_replies/2, [], JObjs),
+    lists:filter(fun filter_outbound_channels/1, Channels).
+
+channels_from_replies(JObj, Channels) ->
+    kz_json:get_value(<<"Channels">>, JObj, []) ++ Channels.
+
+-spec filter_outbound_channels(kz_json:object()) -> boolean().
+filter_outbound_channels(JObj) ->
+    kz_json:get_ne_binary_value(<<"direction">>, JObj) =:= <<"outbound">>.
 
 -spec find_sip_endpoints(kz_json:object(), kapps_call:call()) ->
           kz_term:ne_binaries().
