@@ -36,6 +36,8 @@
 
 -include("callflow.hrl").
 
+-type acc_channels() :: {kz_term:ne_binaries(), kz_term:ne_binaries()}.
+
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module sends an arbitrary response back to the
 %% call originator.
@@ -177,11 +179,10 @@ find_group_endpoints(GroupId, Call) ->
 
 -spec connect_to_channel(kz_term:ne_binaries(), kapps_call:call()) -> 'ok'.
 connect_to_channel(Usernames, Call) ->
-    _ = case cf_util:find_channels(Usernames, Call) of
-            [] -> no_channels(Call);
-            Channels -> connect_to_a_channel(Channels, Call)
-        end,
-    'ok'.
+    case find_channels(Usernames, Call) of
+        [] -> no_channels(Call);
+        Channels -> connect_to_a_channel(Channels, Call)
+    end.
 
 -spec connect_to_a_channel(kz_json:objects(), kapps_call:call()) -> 'ok'.
 connect_to_a_channel(Channels, Call) ->
@@ -202,13 +203,11 @@ connect_to_a_channel(Channels, Call) ->
             intercept_call(LocalUUID, Call)
     end.
 
--spec sort_channels(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary()) ->
-          {kz_term:ne_binaries(), kz_term:ne_binaries()}.
+-spec sort_channels(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary()) -> acc_channels().
 sort_channels(Channels, MyUUID, MyMediaServer) ->
     sort_channels(Channels, MyUUID, MyMediaServer, {[], []}).
 
--spec sort_channels(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary(), {kz_term:ne_binaries(), kz_term:ne_binaries()}) ->
-          {kz_term:ne_binaries(), kz_term:ne_binaries()}.
+-spec sort_channels(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary(), acc_channels()) -> acc_channels().
 sort_channels([], _MyUUID, _MyMediaServer, Acc) -> Acc;
 sort_channels([Channel|Channels], MyUUID, MyMediaServer, Acc) ->
     lager:debug("channel: c: ~s a: ~s n: ~s oleg: ~s", [kz_json:get_ne_binary_value(<<"uuid">>, Channel)
@@ -216,28 +215,21 @@ sort_channels([Channel|Channels], MyUUID, MyMediaServer, Acc) ->
                                                        ,kz_json:get_ne_binary_value(<<"node">>, Channel)
                                                        ,kz_json:get_ne_binary_value(<<"other_leg">>, Channel)
                                                        ]),
-    maybe_add_leg(Channels, MyUUID, MyMediaServer, Acc, Channel).
+    sort_channels(Channels, MyUUID, MyMediaServer, maybe_add_leg(MyUUID, MyMediaServer, Acc, Channel)).
 
--spec maybe_add_leg(kz_json:objects(), kz_term:ne_binary(), kz_term:ne_binary(), {kz_term:ne_binaries(), kz_term:ne_binaries()}, kz_json:object()) ->
-          {kz_term:ne_binaries(), kz_term:ne_binaries()}.
-maybe_add_leg(Channels, MyUUID, MyMediaServer, {Local, Remote}=Acc, Channel) ->
+-spec maybe_add_leg(kz_term:ne_binary(), kz_term:ne_binary(), acc_channels(), kz_json:object()) -> acc_channels().
+maybe_add_leg(MyUUID, MyMediaServer, Acc, Channel) ->
+    UUID = kz_json:get_ne_binary_value(<<"uuid">>, Channel),
+    maybe_add_leg(MyUUID, MyMediaServer, UUID, Acc, Channel).
+
+-spec maybe_add_leg(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), acc_channels(), kz_json:object()) -> acc_channels().
+maybe_add_leg(MyUUID, _MyMediaServer, MyUUID, Acc, _Channel) -> Acc;
+maybe_add_leg(_MyUUID, MyMediaServer, UUID, {Local, Remote}, Channel) ->
     case kz_json:get_ne_binary_value(<<"node">>, Channel) of
         MyMediaServer ->
-            case kz_json:get_ne_binary_value(<<"uuid">>, Channel) of
-                MyUUID ->
-                    sort_channels(Channels, MyUUID, MyMediaServer, Acc);
-                _UUID ->
-                    sort_channels(Channels, MyUUID, MyMediaServer, {maybe_add_other_leg(Channel, Local), Remote})
-            end;
+            {[UUID | Local], Remote};
         _OtherMediaServer ->
-            sort_channels(Channels, MyUUID, MyMediaServer, {Local, maybe_add_other_leg(Channel, Remote)})
-    end.
-
--spec maybe_add_other_leg(kz_json:object(), kz_term:ne_binaries()) -> kz_term:ne_binaries().
-maybe_add_other_leg(Channel, Legs) ->
-    case kz_json:get_ne_binary_value(<<"other_leg">>, Channel) of
-        'undefined' -> Legs;
-        Leg -> [Leg | Legs]
+            {Local, [UUID | Remote]}
     end.
 
 -spec intercept_call(kz_term:ne_binary(), kapps_call:call()) -> 'ok'.
@@ -281,11 +273,23 @@ wait_for_intercept(Call) ->
 intercept_event(_Call, {<<"error">>, <<"dialplan">>}, Evt) ->
     lager:debug("error in dialplan: ~s", [kz_json:get_ne_binary_value(<<"Error-Message">>, Evt)]),
     {'error', 'failed'};
-intercept_event(_Call, {<<"call_event">>,<<"CHANNEL_BRIDGE">>}, _Evt) ->
-    lager:debug("channel bridged to ~s", [kz_json:get_ne_binary_value(<<"Other-Leg-Call-ID">>, _Evt)]);
+intercept_event(Call, {<<"call_event">>,<<"CHANNEL_BRIDGE">>}, Event) ->
+    publish_usurp(Call, Event),
+    lager:debug("channel bridged to ~s", [kz_json:get_ne_binary_value(<<"Other-Leg-Call-ID">>, Event)]);
 intercept_event(Call, _Type, _Evt) ->
     lager:debug("unhandled evt ~p", [_Type]),
     wait_for_intercept(Call).
+
+publish_usurp(Call, Event) ->
+    CallId = kz_json:get_ne_binary_value(<<"Other-Leg-Call-ID">>, Event),
+    FetchId = kapps_call:fetch_id(Call),
+    Usurp = [{<<"Call-ID">>, CallId}
+            ,{<<"Fetch-ID">>, FetchId}
+            ,{<<"Reason">>, <<"intercepted">>}
+            | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
+            ],
+    lager:debug("sending control usurp for fetch-id ~s(~s)", [FetchId, CallId]),
+    cf_exe:amqp_send(Call, Usurp, fun(P) -> kapi_call:publish_usurp_control(CallId, P) end).
 
 -spec find_sip_endpoints(kz_json:object(), kapps_call:call()) ->
           kz_term:ne_binaries().
@@ -325,3 +329,12 @@ no_channels(Call) ->
 no_permission_to_intercept(Call) ->
     kapps_call_command:answer(Call),
     kapps_call_command:b_prompt(<<"intercept-no_channels">>, Call).
+
+-spec find_channels(kz_term:ne_binaries(), kapps_call:call()) -> kz_json:objects().
+find_channels(Usernames, Call) ->
+    Channels = cf_util:find_channels(Usernames, Call),
+    lists:filter(fun filter_outbound_channels/1, Channels).
+
+-spec filter_outbound_channels(kz_json:object()) -> boolean().
+filter_outbound_channels(JObj) ->
+    kz_json:get_ne_binary_value(<<"direction">>, JObj) =:= <<"outbound">>.
