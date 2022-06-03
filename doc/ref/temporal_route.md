@@ -16,7 +16,15 @@ Key | Description | Type | Default | Required | Support Level
 `rules.[]` |   | `string()` |   | `false` |  
 `rules` | List of rule IDs to use | `array(string())` | `[]` | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
-`timezone` | Timezone to use when processing temporal rules | `string()` |   | `false` |  
+`timezone` | Timezone to use when processing temporal rules | [#/definitions/timezone](#timezone) |   | `false` |  
+
+### timezone
+
+The default timezone
+
+
+Key | Description | Type | Default | Required | Support Level
+--- | ----------- | ---- | ------- | -------- | -------------
 
 
 

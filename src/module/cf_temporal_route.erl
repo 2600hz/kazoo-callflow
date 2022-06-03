@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc Controls and picks Callflows based rules.
 %%%
 %%% <h4>Data options:</h4>
@@ -480,6 +480,7 @@ load_current_time(#temporal{timezone=Timezone}=Temporal)->
 %% GOTCHA!
 %% Weird predictions? Bet your weekdays or days are not in order....
 %%   - monday, tuesday, wensday, thursday, friday, saturday, sunday
+%%                      wednesday
 %%   - 1,2,3..31
 %% @end
 %%------------------------------------------------------------------------------

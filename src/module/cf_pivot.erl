@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2021, 2600Hz
+%%% @copyright (C) 2012-2022, 2600Hz
 %%% @doc Accept third-party `callflow' actions (or TwiML)
 %%% @author James Aimonetti
 %%%
@@ -56,7 +56,7 @@ wait_for_pivot(Data, Call) ->
         {'ok', JObj} ->
             case kz_api:event_type(JObj) of
                 {<<"call_event">>,<<"CHANNEL_DESTROY">>} ->
-                    lager:debug("CHANNEL_DESTROY received stooping call"),
+                    lager:debug("CHANNEL_DESTROY received stopping call"),
                     cf_exe:stop(Call);
                 {<<"pivot">>,<<"failed">>} ->
                     lager:warning("pivot failed failing back to next callflow action"),

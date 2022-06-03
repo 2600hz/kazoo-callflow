@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2021, 2600Hz
+%%% @copyright (C) 2012-2022, 2600Hz
 %%% @doc Handles starting/stopping a call recording.
 %%%
 %%% <h4>Data options:</h4>
@@ -35,42 +35,12 @@
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
-handle(Data, Call) ->
-    Url = kz_json:get_value(<<"url">>, Data),
-    case kapps_call_recording:should_store_recording(kapps_call:account_id(Call), Url) of
-        'false' ->
-            lager:debug("cannot store the recording, bad or no URL"),
-            cf_exe:continue(Call);
-        _Store ->
-            lager:debug("storing the recording: ~p", [_Store]),
-            record_caller(Data, Call, Url),
-            cf_exe:continue(Call)
-    end.
+handle(Data, Call0) ->
+    Call1 = cf_record_call:handle(Data, Call0, <<"start">>),
+    wait_for_record_stop(Data, Call1).
 
--spec record_caller(kz_json:object(), kapps_call:call(), kz_term:ne_binary()) -> 'ok'.
-record_caller(Data, Call, Url) ->
-    kapps_call_command:answer_now(Call),
-
-    Format = kapps_call_recording:get_format(kz_json:get_value(<<"format">>, Data)),
-    MediaName = kapps_call_recording:get_media_name(kapps_call:call_id(Call), Format),
-
-    _ = set_recording_url(Data, Call, Url, MediaName),
-
-    lager:info("recording caller starting"),
-    _ = kapps_call_command:b_record(MediaName
-                                   ,?ANY_DIGIT
-                                   ,kapps_call_recording:get_timelimit(Data)
-                                   ,Call
-                                   ),
-    lager:debug("recording caller ended").
-
--spec set_recording_url(kz_json:object(), kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary()) -> any().
-set_recording_url(Data, Call, Url, MediaName) ->
-    lager:debug("store to ~s to ~s", [MediaName, Url]),
-
-    kapps_call:set_custom_channel_vars([{<<"Media-Name">>, MediaName}
-                                       ,{<<"Media-Transfer-Method">>, kz_json:get_value(<<"method">>, Data, <<"put">>)}
-                                       ,{<<"Media-Transfer-Destination">>, Url}
-                                       ]
-                                      ,Call
-                                      ).
+wait_for_record_stop(Data, Call) ->
+    TimeoutS = kapps_call_recording:get_timelimit(Data),
+    WaitMs = (TimeoutS * ?MILLISECONDS_IN_SECOND) + (2 * ?MILLISECONDS_IN_SECOND),
+    _ = kapps_call_command:wait_for_headless_application(<<"record">>, <<"RECORD_STOP">>, <<"call_event">>, WaitMs),
+    cf_exe:continue(Call).
