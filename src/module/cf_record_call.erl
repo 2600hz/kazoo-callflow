@@ -14,7 +14,7 @@
 
 -behaviour(gen_cf_action).
 
--export([handle/2]).
+-export([handle/2, handle/3]).
 
 -include("callflow.hrl").
 
@@ -22,7 +22,6 @@
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
-
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
 handle(Data0, Call) ->
     Label = kz_json:get_ne_binary_value(<<"label">>, Data0, kapps_call:kvs_fetch('cf_flow_name', Call)),
