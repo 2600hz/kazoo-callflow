@@ -22,7 +22,6 @@
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
-
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
 handle(Data0, Call) ->
     Label = kz_json:get_ne_binary_value(<<"label">>, Data0, kapps_call:kvs_fetch('cf_flow_name', Call)),
