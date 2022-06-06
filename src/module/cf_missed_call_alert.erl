@@ -38,7 +38,8 @@
 %%------------------------------------------------------------------------------
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
 handle(Data, Call) ->
-    _ = maybe_add_handle(Data, Call, kapps_call:authorizing_type(Call)),
+    InternalCallAlert = kz_json:get_boolean_value(<<"alert_on_internal_calls">>, Data, 'false'),
+    _ = maybe_add_handle(Data, Call, kapps_call:authorizing_type(Call), InternalCallAlert),
     cf_exe:continue(Call).
 
 %%------------------------------------------------------------------------------
@@ -46,17 +47,20 @@ handle(Data, Call) ->
 %%      from a resource external to kazoo
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_add_handle(kz_json:object(), kapps_call:call(), kz_term:api_binary()) -> kapps_call:call().
-maybe_add_handle(Data, Call, 'undefined') ->
+-spec maybe_add_handle(kz_json:object(), kapps_call:call(), kz_term:api_binary(), kz_term:api_boolean()) -> kapps_call:call().
+maybe_add_handle(Data, Call, 'undefined', _InternalCallAlert) ->
     lager:debug("inbound call from another account, adding termination handler..."),
     add_handler(Data, Call);
-maybe_add_handle(Data, Call, <<"resource">>=_T) ->
+maybe_add_handle(Data, Call, <<"resource">>=_T, _InternalCallAlert) ->
     lager:debug("inbound call from ~s, adding termination handler...", [_T]),
     add_handler(Data, Call);
-maybe_add_handle(Data, Call, <<"sys_info">>=_T) ->
+maybe_add_handle(Data, Call, <<"sys_info">>=_T, _InternalCallAlert) ->
     lager:debug("inbound call from ~s, adding termination handler...", [_T]),
     add_handler(Data, Call);
-maybe_add_handle(_Data, Call, _Wat) ->
+maybe_add_handle(Data, Call, _AuthzType, 'true') ->
+    lager:debug("inbound call from ~s, tracking internal calls, adding termination handler...", [_AuthzType]),
+    add_handler(Data, Call);
+maybe_add_handle(_Data, Call, _AuthzType, 'false') ->
     lager:debug("call is not inbound to account from external resource or account, ignoring..."),
     Call.
 
