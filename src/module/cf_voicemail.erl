@@ -1401,15 +1401,12 @@ delete_message(Message, AccountId, BoxId, Call) ->
 -type message_menu_returns() :: {'ok', 'keep' | 'delete' | 'return' | 'replay' | 'prev' | 'next' | 'forward' | 'rewind' | 'fastforward' | 'callback'} |
                                 {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()}.
 
--spec play_message_menu(mailbox(), kapps_call:call()) ->
-          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
-          message_menu_returns().
-play_message_menu(Box, Call) ->
-    play_message_menu(message_menu(), Box, Call).
-
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call()) ->
           {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
           message_menu_returns().
+play_message_menu(Promt, Box, Call) ->
+    RetryLoop=0,
+    play_message_menu(Promt, Box, Call, RetryLoop).
 play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                              ,keep=Keep
                                              ,forward=Forward
@@ -1423,7 +1420,7 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                              }
                                   ,is_ff_rw_enabled=AllowFfRw
                                   ,interdigit_timeout=Interdigit
-                                  }=Box, Call) ->
+                                  }=Box, Call, RetryLoop) when RetryLoop < ?MAX_MESSAGE_MENU_LOOPS ->
     lager:info("playing message menu"),
     NoopId = kapps_call_command:audio_macro(Prompt, Call),
 
@@ -1448,9 +1445,12 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
         {'ok', Callback} -> {'ok', 'callback'};
         {'error', _}=E -> E;
         _ ->
-            _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
-            play_message_menu(Box, Call)
-    end.
+            play_message_menu(message_menu(), Box, Call, RetryLoop+1)
+    end;
+play_message_menu(_Promt, _Box, Call, RetryLoop) when RetryLoop >= ?MAX_MESSAGE_MENU_LOOPS ->
+    _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
+    lager:debug("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
+   _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
