@@ -1404,9 +1404,9 @@ delete_message(Message, AccountId, BoxId, Call) ->
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call()) ->
           {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
           message_menu_returns().
-play_message_menu(Promt, Box, Call) ->
+play_message_menu(Prompt, Box, Call) ->
     RetryLoop=0,
-    play_message_menu(Promt, Box, Call, RetryLoop).
+    play_message_menu(Prompt, Box, Call, RetryLoop).
 
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call(), non_neg_integer()) ->
           {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
@@ -1451,10 +1451,11 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
         _ ->
             play_message_menu(message_menu(), Box, Call, RetryLoop+1)
     end;
-play_message_menu(_Promt, _Box, Call, RetryLoop) when RetryLoop >= ?MAX_MESSAGE_MENU_LOOPS ->
+play_message_menu(_Prompt, _Box, Call, RetryLoop) when RetryLoop >= ?MAX_MESSAGE_MENU_LOOPS ->
     _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
     lager:debug("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
     _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call).
+
 
 %%------------------------------------------------------------------------------
 %% @doc
