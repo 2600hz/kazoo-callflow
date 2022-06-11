@@ -1454,8 +1454,8 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
 play_message_menu(_Prompt, _Box, Call, RetryLoop) when RetryLoop >= ?MAX_MESSAGE_MENU_LOOPS ->
     _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
     lager:info("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
-    _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call).
-
+    _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
+    _ = kapps_call_command:hangup(Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
