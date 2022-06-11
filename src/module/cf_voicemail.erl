@@ -1407,6 +1407,10 @@ delete_message(Message, AccountId, BoxId, Call) ->
 play_message_menu(Promt, Box, Call) ->
     RetryLoop=0,
     play_message_menu(Promt, Box, Call, RetryLoop).
+
+-spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call(), non_neg_integer()) ->
+          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
+          message_menu_returns().
 play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                              ,keep=Keep
                                              ,forward=Forward
