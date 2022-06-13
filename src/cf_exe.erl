@@ -666,7 +666,7 @@ handle_event(JObj, #state{cf_module_pid=PidRef
         {{<<"call_event">>, <<"CHANNEL_REPLACED">>}, _} ->
             handle_channel_replaced(Call, JObj, Notify);
         {{<<"call_event">>, <<"CHANNEL_DIRECT">>}, _} ->
-            lager:info("this callflow executor is the target of a direct bowout, terminate immediately", [CallId]),
+            lager:info("this callflow executor is the target of a direct bowout, terminate immediately"),
             hard_stop(Call);
         {{<<"call_event">>, <<"CHANNEL_TRANSFEROR">>}, _} ->
             handle_channel_transferor(Call, JObj);
