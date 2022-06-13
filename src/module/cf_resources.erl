@@ -224,7 +224,7 @@ call_forward_vars(Call, Vars) ->
                ,fun call_forward_export_vars/2
                ],
     Fun = fun(F, Acc) -> F(Call, Acc) end,
-    lists:foldl(Fun, Vars, Routines).
+    lists:usort(lists:foldl(Fun, Vars, Routines)).
 
 call_forward_basic_vars(Call, Acc) ->
     [{<<"Authorizing-ID">>, kapps_call:authorizing_id(Call)}
