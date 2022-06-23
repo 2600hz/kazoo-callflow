@@ -480,6 +480,7 @@ load_current_time(#temporal{timezone=Timezone}=Temporal)->
 %% GOTCHA!
 %% Weird predictions? Bet your weekdays or days are not in order....
 %%   - monday, tuesday, wensday, thursday, friday, saturday, sunday
+%%                      wednesday
 %%   - 1,2,3..31
 %% @end
 %%------------------------------------------------------------------------------
