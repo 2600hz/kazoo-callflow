@@ -12,7 +12,7 @@
 -module(cf_listener).
 -behaviour(gen_listener).
 
--export([start_link/1]).
+-export([start_link/2]).
 -export([init/1
         ,handle_call/3
         ,handle_cast/2
@@ -29,6 +29,58 @@
 -define(SERVER, ?MODULE).
 
 -define(RESPONDERS, []).
+
+-define(CALLFLOW_HASHED_EXCHANGE, <<"callflow.route">>).
+
+-define(HASHED_EXCHANGE_HASH_HEADER(A), maps:get(hash_header, A, <<"call-id">>)).
+-define(HASHED_EXCHANGE_HASH(A), {<<"hash-header">>, 'longstr', ?HASHED_EXCHANGE_HASH_HEADER(A)}).
+-define(HASHED_EXCHANGE_ARGS(A), [?HASHED_EXCHANGE_HASH(A)]).
+-define(HASHED_EXCHANGE_OPTIONS(A), [{'auto_delete', 'true'}
+                                    ,{'arguments', ?HASHED_EXCHANGE_ARGS(A)}
+                                    ]).
+-define(HASHED_EXCHANGE_ROUTE_BINDING_KEYS, [<<"route.req.audio.*">>
+                                            ,<<"route.req.video.*">>
+                                            ]).
+-define(HASHED_EXCHANGE_ROUTE_BINDING, [{source, ?EXCHANGE_CALLMGR}
+                                       ,{routings, ?HASHED_EXCHANGE_ROUTE_BINDING_KEYS}
+                                       ]).
+-define(HASHED_EXCHANGE_BINDINGS, [{route, ?HASHED_EXCHANGE_ROUTE_BINDING}]).
+-define(HASHED_EXCHANGE(A), [{'name', ?CALLFLOW_HASHED_EXCHANGE}
+                            ,{'type', <<"x-consistent-hash">>}
+                            ,{'options', ?HASHED_EXCHANGE_OPTIONS(A)}
+                            ,{'bindings', ?HASHED_EXCHANGE_BINDINGS}
+                            ]).
+-define(HASHED_ROUTING(A), <<"20">>).
+%%-define(HASHED_ROUTING(A), kz_term:to_binary(maps:get(sequence, A, 20) * 5)).
+-define(HASHED_BIND(A), [{'exchange', ?HASHED_EXCHANGE(A)}
+                        ,{'routing', ?HASHED_ROUTING(A)}
+                        ]).
+-define(HASHED_BINDINGS(A), [{'bind', ?HASHED_BIND(A)}]).
+
+-define(HASHED_QUEUE_NAME, <<"">>).
+-define(HASHED_QUEUE_OPTIONS, []).
+-define(HASHED_QUEUE_CONSUME_OPTIONS, []).
+-define(HASHED_QUEUE_PARAMS, [{'queue_options', ?HASHED_QUEUE_OPTIONS}
+                             ,{'consume_options', ?HASHED_QUEUE_CONSUME_OPTIONS}
+                             ]).
+
+-define(SHARED_BINDINGS, [{'route', [{'types', ?RESOURCE_TYPES_HANDLED}
+                                    ,{'restrict_to', ['account']}
+                                    ]
+                          }
+                         ]).
+
+-define(SHARED_QUEUE_NAME, <<"callflow_shared_route">>).
+-define(SHARED_QUEUE_OPTIONS, [{'exclusive', 'false'}]).
+-define(SHARED_QUEUE_CONSUME_OPTIONS, [{'exclusive', 'false'}]).
+-define(SHARED_QUEUE_PARAMS, [{'queue_options', ?SHARED_QUEUE_OPTIONS}
+                             ,{'consume_options', ?SHARED_QUEUE_CONSUME_OPTIONS}
+                             ]).
+
+-define(NODE_BINDINGS, [{'self', []}
+                       ,{'dialplan', []}
+                       ]).
+
 -define(BINDINGS, [{'route', [{'types', ?RESOURCE_TYPES_HANDLED}
                              ,{'restrict_to', ['account']}
                              ]
@@ -36,6 +88,7 @@
                   ,{'self', []}
                   ,{'dialplan', []}
                   ]).
+
 -define(QUEUE_NAME(I), <<"callflow_route_", I/binary>>).
 -define(QUEUE_OPTIONS, [{'exclusive', 'false'}]).
 -define(CONSUME_OPTIONS, [{'exclusive', 'false'}]).
@@ -48,14 +101,24 @@
 %% @doc Starts the server.
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(kz_term:ne_binary()) -> kz_types:startlink_ret().
-start_link(Instance) ->
-    gen_listener:start_link(?SERVER, [{'responders', ?RESPONDERS}
-                                     ,{'bindings', ?BINDINGS}
-                                     ,{'queue_name', ?QUEUE_NAME(Instance)}
-                                     ,{'queue_options', ?QUEUE_OPTIONS}
-                                     ,{'consume_options', ?CONSUME_OPTIONS}
-                                     ], []).
+-spec start_link(map(), integer()) -> kz_types:startlink_ret().
+start_link(Map, Seq) ->
+    gen_listener:start_link(?SERVER, initial_bindings(Map), [Map#{sequence => Seq}]).
+
+initial_bindings(#{instance := Instance, shared := false}) ->
+    [{'responders', ?RESPONDERS}
+    ,{'bindings', ?BINDINGS}
+    ,{'queue_name', ?QUEUE_NAME(Instance)}
+    ,{'queue_options', ?QUEUE_OPTIONS}
+    ,{'consume_options', ?CONSUME_OPTIONS}
+    ];
+initial_bindings(#{instance := Instance, shared := true}) ->
+    [{'responders', ?RESPONDERS}
+    ,{'bindings', ?NODE_BINDINGS}
+    ,{'queue_name', ?QUEUE_NAME(Instance)}
+    ,{'queue_options', ?QUEUE_OPTIONS}
+    ,{'consume_options', ?CONSUME_OPTIONS}
+    ].
 
 %%%=============================================================================
 %%% gen_listener callbacks
@@ -65,9 +128,9 @@ start_link(Instance) ->
 %% @doc Initializes the server.
 %% @end
 %%------------------------------------------------------------------------------
--spec init(map()) -> {'ok', state()}.
-init(State) ->
-    {'ok', State}.
+-spec init(list()) -> {'ok', state()}.
+init([#{instance := Instance} = Map]) ->
+    {'ok', Map#{instance_queue => ?QUEUE_NAME(Instance)}}.
 
 %%------------------------------------------------------------------------------
 %% @doc Handling call messages.
@@ -82,7 +145,16 @@ handle_call(_Msg, _From, State) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle_cast(any(), state()) -> kz_types:handle_cast_ret_state(state()).
-handle_cast({'gen_listener', {'created_queue', _QueueNAme}}, State) ->
+handle_cast({'gen_listener', {'created_queue', Q}}, #{instance_queue := Q, shared := false} = State) ->
+    lager:debug("started instance queue ~s", [Q]),
+    {'noreply', State};
+handle_cast({'gen_listener', {'created_queue', Q}}, #{instance_queue := Q, shared := true, share_type := hashed} = State) ->
+    lager:debug("started instance queue ~s, starting hashed shared queue", [Q]),
+    gen_server:cast(self(), {'add_queue', ?HASHED_QUEUE_NAME, ?HASHED_QUEUE_PARAMS, ?HASHED_BINDINGS(State)}),
+    {'noreply', State};
+handle_cast({'gen_listener', {'created_queue', Q}}, #{instance_queue := Q, shared := true, share_type := queue} = State) ->
+    lager:debug("started instance queue ~s, starting shared queue", [Q]),
+    gen_server:cast(self(), {'add_queue', ?SHARED_QUEUE_NAME, ?SHARED_QUEUE_PARAMS, ?SHARED_BINDINGS}),
     {'noreply', State};
 handle_cast({'gen_listener', {'is_consuming', _IsConsuming}}, State) ->
     {'noreply', State};
@@ -115,9 +187,9 @@ handle_info(_Info, State) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle_event(kz_json:object(), kz_term:proplist(), state()) -> gen_listener:handle_event_return().
-handle_event(JObj, Props, State) ->
+handle_event(JObj, Props, #{instance_queue := Q} = State) ->
     Msg = kapi:delivery_message(JObj, Props),
-    handle_msg(Msg, Props, State).
+    handle_msg(Msg, props:set_value(queue, Q, Props), State).
 
 %%------------------------------------------------------------------------------
 %% @doc This function is called by a `gen_listener' when it is about to
