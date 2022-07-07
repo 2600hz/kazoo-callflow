@@ -6,6 +6,7 @@
 -include_lib("kazoo_call/include/kapps_call_command_types.hrl").
 -include_lib("kazoo_documents/include/kazoo_documents.hrl").
 -include_lib("kazoo_sip/include/kzsip_uri.hrl").
+-include_lib("kazoo_amqp/include/kz_amqp.hrl").
 
 -type cf_exe_response() :: {'stop'} |
                            {'continue'} |

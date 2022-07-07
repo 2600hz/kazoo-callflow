@@ -19,7 +19,7 @@
 -export([init/1]).
 -export([forward/1]).
 
--define(CHILDREN(I), [?WORKER_ARGS_TYPE('cf_listener', [I], 'temporary')]).
+-define(CHILDREN(A), [?WORKER_ARGS_TYPE('cf_listener', [A], 'temporary')]).
 
 %% ===================================================================
 %% API functions
@@ -52,16 +52,41 @@ init([]) ->
     MaxRestarts = 0,
     MaxSecondsBetweenRestarts = 1,
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
-    {'ok', {SupFlags, ?CHILDREN(instance_name())}}.
+    {'ok', {SupFlags, ?CHILDREN(child_args())}}.
+
+-spec child_args() -> map().
+child_args() ->
+    #{instance => instance_name()
+     ,shared => cfg_shared_listener()
+     ,share_type => cfg_shared_listener_type()
+     ,hash_header => cfg_shared_listener_hash_header()
+     }.
 
 -spec instance_name() -> kz_term:ne_binary().
 instance_name() ->
-    case kz_app_config:is_true(?APP, <<"callflow_listeners_shared_instance">>, false) of
-        true -> <<"shared">>;
-        false -> kz_binary:rand_hex(16)
+    kz_binary:rand_hex(16).
+
+-spec cfg_shared_listener() -> boolean().
+cfg_shared_listener() ->
+    kz_app_config:is_true(?APP, <<"callflow_listeners_shared_instance">>, 'false').
+
+-spec cfg_shared_listener_hash_header() -> kz_term:ne_binary().
+cfg_shared_listener_hash_header() ->
+    kz_app_config:get_ne_binary(?APP, <<"callflow_listeners_shared_instance_hash_header">>, <<"call-id">>).
+
+cfg_shared_listener_type() ->
+    kz_app_config:get_atom(?APP, <<"callflow_listeners_shared_instance_type">>, cfg_default_shared_listener_type()).
+
+cfg_default_shared_listener_type() ->
+    case cfg_listeners() of
+        1 -> queue;
+        _ -> hashed
     end.
 
--spec forward(term()) -> any().
+cfg_listeners() ->
+    lists:max([1, kz_app_config:get_integer(?APP, <<"callflow_listeners">>, 5)]).
+
+-spec forward(Msg) -> {'forward', Msg}.
 forward(Msg) ->
     Listeners = supervisor:which_children(?MODULE),
     Size = length(Listeners),
@@ -71,12 +96,12 @@ forward(Msg) ->
 
 -spec start_workers(pid()) -> ok.
 start_workers(Pid) ->
-    Workers = kz_app_config:get_integer(?APP, <<"callflow_listeners">>, 5),
+    Workers = cfg_listeners(),
     Pause = kz_app_config:get_integer(?APP, <<"callflow_listeners_start_pause_ms">>, ?MILLISECONDS_IN_SECOND * 3),
-    lager:debug("starting ~B workers with ~B pause between", [Workers, Pause]),
-    lists:foreach(fun(_) -> start_worker(Pid, Pause) end, lists:seq(1, Workers)).
+    lager:debug("starting ~B workers with ~Bms pause between", [Workers, Pause]),
+    lists:foreach(fun(I) -> start_worker(I, Pid, Pause) end, lists:seq(1, Workers)).
 
--spec start_worker(pid(), integer()) -> ok.
-start_worker(Pid, Pause) ->
-    _ = supervisor:start_child(Pid, []),
+-spec start_worker(integer(), pid(), integer()) -> 'ok'.
+start_worker(Instance, Pid, Pause) ->
+    _ = supervisor:start_child(Pid, [Instance]),
     timer:sleep(Pause).
