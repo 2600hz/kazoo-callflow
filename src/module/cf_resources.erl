@@ -67,6 +67,10 @@
 
 -export([handle/2]).
 
+-ifdef(TEST).
+-export([get_caller_id/3]).
+-endif.
+
 -include("callflow.hrl").
 -include_lib("kazoo_amqp/include/kapi_offnet_resource.hrl").
 
@@ -325,11 +329,18 @@ maybe_has_comfort_noise_option_enabled(Endpoint, Acc) ->
         'false' -> Acc
     end.
 
--spec get_caller_id(kz_json:object(), kapps_call:call()) ->
-          {kz_term:api_binary(), kz_term:api_binary()}.
+-spec get_caller_id(kz_json:object(), kapps_call:call()) -> kz_attributes:cid().
 get_caller_id(Data, Call) ->
-    Type = kz_json:get_value(<<"caller_id_type">>, Data, <<"external">>),
-    kz_attributes:caller_id(Type, Call).
+    get_caller_id(Data, Call, kapps_config:is_true(?RES_CONFIG_CAT, <<"should_enforce_account_cid">>, 'false')).
+
+-spec get_caller_id(kz_json:object(), kapps_call:call(), boolean()) -> kz_attributes:cid().
+get_caller_id(Data, Call, 'false') ->
+    lager:info("not enforcing account cid"),
+    CIDType = kz_json:get_value(<<"caller_id_type">>, Data, <<"external">>),
+    kz_attributes:caller_id(CIDType, Call);
+get_caller_id(_Data, Call, 'true') ->
+    lager:info("enforcing account cid"),
+    kz_attributes:get_account_external_cid(Call).
 
 -spec get_asserted_identity(kz_json:object(), kapps_call:call()) ->
           {kz_term:api_binary(), kz_term:api_binary(), kz_term:api_binary()}.
