@@ -335,7 +335,6 @@ get_caller_id(Data, Call) ->
 
 -spec get_caller_id(kz_json:object(), kapps_call:call(), boolean()) -> kz_attributes:cid().
 get_caller_id(Data, Call, 'false') ->
-    lager:info("not enforcing account cid"),
     CIDType = kz_json:get_value(<<"caller_id_type">>, Data, <<"external">>),
     kz_attributes:caller_id(CIDType, Call);
 get_caller_id(_Data, Call, 'true') ->
