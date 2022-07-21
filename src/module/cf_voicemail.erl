@@ -1391,15 +1391,20 @@ delete_message(Message, AccountId, BoxId, Call) ->
 -type message_menu_returns() :: {'ok', 'keep' | 'delete' | 'return' | 'replay' | 'prev' | 'next' | 'forward' | 'rewind' | 'fastforward' | 'callback'} |
                                 {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()}.
 
--spec play_message_menu(mailbox(), kapps_call:call()) ->
-          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
-          message_menu_returns().
-play_message_menu(Box, Call) ->
-    play_message_menu(message_menu(), Box, Call).
-
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call()) ->
           {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
           message_menu_returns().
+play_message_menu(Prompt, Box, Call) ->
+    play_message_menu(Prompt, Box, Call, ?MAX_MESSAGE_MENU_LOOPS).
+
+-spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call(), non_neg_integer()) ->
+          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
+          message_menu_returns().
+play_message_menu(_Prompt, _Box, Call, 0) ->
+    _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
+    lager:info("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
+    _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
+    _ = kapps_call_command:hangup(Call);
 play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                              ,keep=Keep
                                              ,forward=Forward
@@ -1413,7 +1418,7 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                              }
                                   ,is_ff_rw_enabled=AllowFfRw
                                   ,interdigit_timeout=Interdigit
-                                  }=Box, Call) ->
+                                  }=Box, Call, RetryLoop) ->
     lager:info("playing message menu"),
     NoopId = kapps_call_command:audio_macro(Prompt, Call),
 
@@ -1438,8 +1443,7 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
         {'ok', Callback} -> {'ok', 'callback'};
         {'error', _}=E -> E;
         _ ->
-            _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
-            play_message_menu(Box, Call)
+            play_message_menu(message_menu(), Box, Call, RetryLoop-1)
     end.
 
 %%------------------------------------------------------------------------------
