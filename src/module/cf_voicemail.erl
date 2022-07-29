@@ -1404,6 +1404,7 @@ play_message_menu(Prompt, Box, Call) ->
     play_message_menu(Prompt, Box, Call, ?MAX_MESSAGE_MENU_LOOPS).
 
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call(), non_neg_integer()) ->
+
           {'error', 'channel_hungup' | 'channel_unbridge' | 'no_selection' | kz_json:object()} |
           message_menu_returns().
 play_message_menu(_Prompt, _Box, _Call, 0) ->
