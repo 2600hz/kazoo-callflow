@@ -32,8 +32,6 @@
 -export([handle/2]).
 -export([new_message/4]).
 
--elvis([{elvis_style, god_modules, disable}]).
-
 -include("callflow.hrl").
 -include_lib("kazoo_stdlib/include/kazoo_json.hrl").
 
@@ -191,7 +189,6 @@
 
 -record(mailbox, {mailbox_id :: kz_term:api_ne_binary()
                  ,mailbox_number = <<>> :: binary()
-                 ,mailbox_doc :: kzd_vmboxes:doc() | 'undefined'
                  ,exists = 'false' :: boolean()
                  ,skip_instructions = 'false' :: boolean()
                  ,skip_greeting = 'false' :: boolean()
@@ -646,14 +643,7 @@ record_voicemail(AttachmentName, #mailbox{max_message_length=MaxMessageLength
     kapps_call_command:tones([Tone], Call),
     lager:info("composing new voicemail to ~s", [AttachmentName]),
     Routines = [{fun kapps_call:set_message_left/2, 'true'}],
-    case kapps_call_command:b_record(AttachmentName
-                                    ,?ANY_DIGIT
-                                    ,kz_term:to_binary(MaxMessageLength)
-                                    ,silence_threshold(Box)
-                                    ,silence_hits(Box)
-                                    ,Call
-                                    )
-    of
+    case kapps_call_command:b_record(AttachmentName, ?ANY_DIGIT, kz_term:to_binary(MaxMessageLength), Call) of
         {'ok', Msg} ->
             Length = kz_json:get_integer_value(<<"Length">>, Msg, 0),
             case kz_call_event:channel_answer_state(Msg) =:= <<"answered">>
@@ -1059,6 +1049,12 @@ play_message_menu(Prompt
             play_messages(Messages, PrevMessages, Count, Box, Call);
         {'ok', 'callback'} ->
             maybe_handle_vm_callback(CurrentMessage, Messages, PrevMessages, Count, Box, Call);
+        {'error', 'no_selection'} ->
+            _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
+            lager:info("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
+            _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
+            _ = kapps_call_command:hangup(Call),
+            'ok';
         {'error', _} ->
             lager:info("error during message playback"),
             _ = kapps_call_command:flush(Call),
@@ -1402,15 +1398,16 @@ delete_message(Message, AccountId, BoxId, Call) ->
                                 {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()}.
 
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call()) ->
-          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
+          {'error', 'channel_hungup' | 'channel_unbridge' | 'no_selection' | kz_json:object()} |
           message_menu_returns().
 play_message_menu(Prompt, Box, Call) ->
-    RetryLoop=0,
-    play_message_menu(Prompt, Box, Call, RetryLoop).
+    play_message_menu(Prompt, Box, Call, ?MAX_MESSAGE_MENU_LOOPS).
 
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call(), non_neg_integer()) ->
-          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
+          {'error', 'channel_hungup' | 'channel_unbridge' | 'no_selection' | kz_json:object()} |
           message_menu_returns().
+play_message_menu(_Prompt, _Box, _Call, 0) ->
+    {'error', 'no_selection'};
 play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                              ,keep=Keep
                                              ,forward=Forward
@@ -1424,7 +1421,7 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                              }
                                   ,is_ff_rw_enabled=AllowFfRw
                                   ,interdigit_timeout=Interdigit
-                                  }=Box, Call, RetryLoop) when RetryLoop < ?MAX_MESSAGE_MENU_LOOPS ->
+                                  }=Box, Call, RetryLoop) ->
     lager:info("playing message menu"),
     NoopId = kapps_call_command:audio_macro(Prompt, Call),
 
@@ -1449,13 +1446,8 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
         {'ok', Callback} -> {'ok', 'callback'};
         {'error', _}=E -> E;
         _ ->
-            play_message_menu(message_menu(), Box, Call, RetryLoop+1)
-    end;
-play_message_menu(_Prompt, _Box, Call, RetryLoop) when RetryLoop >= ?MAX_MESSAGE_MENU_LOOPS ->
-    _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
-    lager:info("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
-    _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
-    _ = kapps_call_command:hangup(Call).
+            play_message_menu(message_menu(), Box, Call, RetryLoop-1)
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -1980,7 +1972,7 @@ get_mailbox_profile(Data, Call) ->
         {'ok', MailboxJObj} ->
             MailboxId = kz_doc:id(MailboxJObj),
             lager:info("loaded voicemail box ~s", [MailboxId]),
-            Default = #mailbox{mailbox_doc=MailboxJObj},
+            Default = #mailbox{},
 
             %% Don't check if the voicemail box belongs to the owner (by default) if the call was not
             %% specifically to him, IE: calling a ring group and going to voicemail should not check
@@ -2509,30 +2501,3 @@ send_mwi_update(#mailbox{account_db=AccountDb
                         ,mailbox_id=BoxId
                         }) ->
     kvm_mwi:notify_vmbox(AccountDb, BoxId).
-
--spec silence_threshold(mailbox()) -> pos_integer().
-silence_threshold(#mailbox{mailbox_doc=Doc}) ->
-    silence_threshold(kzd_vmboxes:silence_threshold(Doc)
-                     ,kapps_config:get_integer(?CF_CONFIG_CAT
-                                              ,[?KEY_VOICEMAIL, <<"silence_threshold">>]
-                                              )
-                     ).
-
--spec silence_threshold(kz_term:api_integer(), kz_term:api_integer()) -> pos_integer().
-silence_threshold('undefined', 'undefined') -> 200;
-silence_threshold('undefined', ConfigThreshold) -> ConfigThreshold;
-silence_threshold(BoxThreshold, _ConfigThreshold) -> BoxThreshold.
-
-
--spec silence_hits(mailbox()) -> pos_integer().
-silence_hits(#mailbox{mailbox_doc=Doc}) ->
-    silence_hits(kzd_vmboxes:silence_hits(Doc)
-                ,kapps_config:get_integer(?CF_CONFIG_CAT
-                                         ,[?KEY_VOICEMAIL, <<"silence_hits">>]
-                                         )
-                ).
-
--spec silence_hits(kz_term:api_integer(), kz_term:api_integer()) -> pos_integer().
-silence_hits('undefined', 'undefined') -> 5;
-silence_hits('undefined', ConfigThreshold) -> ConfigThreshold;
-silence_hits(BoxThreshold, _ConfigThreshold) -> BoxThreshold.
