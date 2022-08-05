@@ -43,6 +43,7 @@ handle(Data, Call) ->
              ,{<<"Request-Body-Format">>, kz_json:get_ne_binary_value(<<"req_body_format">>, Data, <<"form">>)}
              ,{<<"Request-Format">>, kz_json:get_ne_binary_value(<<"req_format">>, Data)}
              ,{<<"Request-Timeout">>, kz_json:get_integer_value(<<"req_timeout_ms">>, Data)}
+             ,{<<"Custom-Request-Headers">>, kz_json:get_json_value(<<"custom_request_headers">>, Data)}
              ,{<<"Voice-URI">>, kz_json:get_ne_binary_value(<<"voice_url">>, Data)}
              | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
              ]),
