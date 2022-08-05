@@ -188,6 +188,7 @@
 -define(KEY_LENGTH, 1).
 
 -record(mailbox, {mailbox_id :: kz_term:api_ne_binary()
+                 ,mailbox_doc :: kzd_vmboxes:doc() | 'undefined'
                  ,mailbox_number = <<>> :: binary()
                  ,exists = 'false' :: boolean()
                  ,skip_instructions = 'false' :: boolean()
