@@ -188,6 +188,7 @@
 -define(KEY_LENGTH, 1).
 
 -record(mailbox, {mailbox_id :: kz_term:api_ne_binary()
+                 ,mailbox_doc :: kzd_vmboxes:doc() | 'undefined'
                  ,mailbox_number = <<>> :: binary()
                  ,exists = 'false' :: boolean()
                  ,skip_instructions = 'false' :: boolean()
@@ -1049,6 +1050,12 @@ play_message_menu(Prompt
             play_messages(Messages, PrevMessages, Count, Box, Call);
         {'ok', 'callback'} ->
             maybe_handle_vm_callback(CurrentMessage, Messages, PrevMessages, Count, Box, Call);
+        {'error', 'no_selection'} ->
+            _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
+            lager:info("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
+            _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
+            _ = kapps_call_command:hangup(Call),
+            'ok';
         {'error', _} ->
             lager:info("error during message playback"),
             _ = kapps_call_command:flush(Call),
@@ -1389,22 +1396,17 @@ delete_message(Message, AccountId, BoxId, Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -type message_menu_returns() :: {'ok', 'keep' | 'delete' | 'return' | 'replay' | 'prev' | 'next' | 'forward' | 'rewind' | 'fastforward' | 'callback'} |
-                                {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()}.
+                                {'error', 'channel_hungup' | 'channel_unbridge' | 'no_selection' | kz_json:object()}.
 
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call()) ->
-          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
           message_menu_returns().
 play_message_menu(Prompt, Box, Call) ->
     play_message_menu(Prompt, Box, Call, ?MAX_MESSAGE_MENU_LOOPS).
 
 -spec play_message_menu(kapps_call_command:audio_macro_prompts(), mailbox(), kapps_call:call(), non_neg_integer()) ->
-          {'error', 'channel_hungup' | 'channel_unbridge' | kz_json:object()} |
           message_menu_returns().
-play_message_menu(_Prompt, _Box, Call, 0) ->
-    _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
-    lager:info("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
-    _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
-    _ = kapps_call_command:hangup(Call);
+play_message_menu(_Prompt, _Box, _Call, 0) ->
+    {'error', 'no_selection'};
 play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
                                              ,keep=Keep
                                              ,forward=Forward
@@ -1993,6 +1995,7 @@ get_mailbox_profile(Data, Call) ->
             IsFfRwEnabled = is_ff_rw_enabled(MailboxJObj),
 
             #mailbox{mailbox_id = MailboxId
+                    ,mailbox_doc = MailboxJObj
                     ,exists = 'true'
                     ,keys = populate_keys(Call)
                     ,announcement_only =
@@ -2163,7 +2166,7 @@ populate_keys(Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec get_mailbox_doc(kz_term:ne_binary(), kz_term:api_binary(), kz_json:object(), kapps_call:call()) ->
-          {'ok', kz_json:object()} |
+          {'ok', kzd_vmboxes:doc()} |
           {'error', any()}.
 get_mailbox_doc(Db, Id, Data, Call) ->
     CaptureGroup = kapps_call:kvs_fetch('cf_capture_group', Call),
@@ -2187,13 +2190,13 @@ get_mailbox_doc(Db, Id, Data, Call) ->
     end.
 
 -spec get_user_mailbox_doc(kz_json:object(), kapps_call:call()) ->
-          {'ok', kz_json:object()} |
+          {'ok', kzd_vmboxes:doc()} |
           {'error', any()}.
 get_user_mailbox_doc(Data, Call) ->
     get_user_mailbox_doc(Data, Call, kapps_call:owner_id(Call)).
 
 -spec get_user_mailbox_doc(kz_json:object(), kapps_call:call(), kz_term:api_binary()) ->
-          {'ok', kz_json:object()} |
+          {'ok', kzd_vmboxes:doc()} |
           {'error', any()}.
 get_user_mailbox_doc(Data, Call, 'undefined') ->
     DeviceId = kapps_call:authorizing_id(Call),
@@ -2222,13 +2225,12 @@ get_user_mailbox_doc(Data, Call, OwnerId) ->
                        ),
             {'ok', Box};
         Boxes ->
-            lager:debug("found ~p vmboxes assigned to owner ~s",
-                        [length(Boxes), OwnerId]),
+            lager:debug("found ~p vmboxes assigned to owner ~s", [length(Boxes), OwnerId]),
             maybe_match_callerid(Boxes,Data, Call)
     end.
 
--spec maybe_match_callerid(kz_json:objects(), kz_json:object(), kapps_call:call()) ->
-          {'ok', kz_json:object()} |
+-spec maybe_match_callerid([kzd_vmboxes:doc()], kz_json:object(), kapps_call:call()) ->
+          {'ok', kzd_vmboxes:doc()} |
           {'error', any()}.
 maybe_match_callerid(Boxes, Data, Call) ->
     case kz_json:is_true(<<"callerid_match_login">>, Data, 'false') of
@@ -2240,8 +2242,8 @@ maybe_match_callerid(Boxes, Data, Call) ->
             try_match_callerid(Boxes, CallerId)
     end.
 
--spec try_match_callerid(kz_json:objects(), kz_term:ne_binary()) ->
-          {'ok', kz_json:object()} |
+-spec try_match_callerid([kzd_vmboxes:doc()], kz_term:ne_binary()) ->
+          {'ok', kzd_vmboxes:doc()} |
           {'error', any()}.
 try_match_callerid([], _CallerId) ->
     lager:debug("no voicemail box found for owner with matching caller id ~s", [_CallerId]),
