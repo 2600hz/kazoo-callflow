@@ -628,24 +628,46 @@ find_user_endpoints(UserIds, DeviceIds, Call) ->
     UserDeviceIds = kz_attributes:owned_by(UserIds, <<"device">>, Call),
     lists:merge(lists:sort(UserDeviceIds), DeviceIds).
 
--spec find_channels(kz_term:ne_binaries(), kapps_call:call()) -> kz_json:objects().
-find_channels(Usernames, Call) ->
-    Realm = kzd_accounts:fetch_realm(kapps_call:account_id(Call)),
-    lager:debug("finding channels for realm ~p, usernames ~p", [Realm, Usernames]),
+-spec find_channels(kz_term:ne_binary() | kz_term:ne_binaries(), kapps_call:call() | kz_term:ne_binary()) ->
+          kz_json:objects().
+find_channels([_|_]=Usernames, <<Realm/binary>>) ->
+    lager:debug("finding channels for realm ~s, usernames ~p", [Realm, Usernames]),
     Req = [{<<"Realm">>, Realm}
           ,{<<"Usernames">>, Usernames}
+          ,{<<"Active-Only">>, 'false'}
           | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
           ],
-    case kz_amqp_worker:call(Req
-                            ,fun kapi_call:publish_query_user_channels_req/1
-                            ,fun kapi_call:query_user_channels_resp_v/1
-                            )
-    of
-        {'ok', Resp} -> kz_json:get_value(<<"Channels">>, Resp, []);
-        {'error', _E} ->
-            lager:debug("failed to get channels: ~p", [_E]),
-            []
-    end.
+    handle_user_channels_resp(make_user_channels_query(Req));
+find_channels(<<Username/binary>>, <<Realm/binary>>) ->
+    lager:debug("finding channels for realm ~s, username ~s", [Realm, Username]),
+    Req = [{<<"Realm">>, Realm}
+          ,{<<"Username">>, Username}
+          ,{<<"Active-Only">>, 'false'}
+          | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
+          ],
+    handle_user_channels_resp(make_user_channels_query(Req));
+find_channels(Usernames, Call) ->
+    <<Realm/binary>> = kzd_accounts:fetch_realm(kapps_call:account_id(Call)),
+    find_channels(Usernames, Realm).
+
+make_user_channels_query(Req) ->
+    kz_amqp_worker:call_collect(Req
+                               ,fun kapi_call:publish_query_user_channels_req/1
+                               ,{'ecallmgr', fun kapi_call:query_user_channels_resp_v/1, 'true'}
+                               ).
+
+handle_user_channels_resp({'ok', ChannelResps}) -> extract_channels(ChannelResps);
+handle_user_channels_resp({'error', _E}) ->
+    lager:debug("failed to get channels: ~p", [_E]),
+    [].
+
+-spec extract_channels(kz_json:objects()) -> kz_json:objects().
+extract_channels(ChannelResps) ->
+    lists:usort(lists:foldl(fun extract_channels_fold/2, [], ChannelResps)).
+
+-spec extract_channels_fold(kz_json:object(), kz_json:objects()) -> kz_json:objects().
+extract_channels_fold(ChannelResp, Channels) ->
+    kz_json:get_list_value(<<"Channels">>, ChannelResp) ++ Channels.
 
 -spec check_value_of_fields(kz_term:proplist(), boolean(), kz_json:object(), kapps_call:call()) ->
           boolean().
