@@ -49,7 +49,7 @@ play_tones(Tones, Call) ->
     _ = kapps_call_command:tones(convert_tones(Tones), Call),
     kapps_call_command:b_noop(Call).
 
--spec convert_tones(kz_json:objects()) -> kzjson:objects().
+-spec convert_tones(kz_json:objects()) -> kz_json:objects().
 convert_tones(Tones) ->
     [convert_tone(Tone) || Tone <- Tones].
 
