@@ -100,7 +100,9 @@ cf_exe_pid(Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec start_link(map()) -> kz_types:startlink_ret().
-start_link(Map) ->
+start_link(#{request := JObj} = Map) ->
+    kz_log:put_callid(JObj),
+    lager:debug("starting new callflow executor"),
     proc_lib:start_link(?MODULE, 'init_cf_exe', [self(), Map]).
 
 -spec get_call(pid() | kapps_call:call()) -> {'ok', kapps_call:call()}.
@@ -353,6 +355,8 @@ init_cf_exe(Pid, #{request := JObj
                   ,props := Props
                   ,callback := Fun
                   }) ->
+    kz_log:put_callid(JObj),
+    lager:debug("initializing callflow executor"),
     proc_lib:init_ack(Pid, {'ok', self()}),
     kz_amqp_channel:consumer_channel(props:get_value('channel', Props)),
     _ = kz_events:bind_call_id(kz_api:call_id(JObj)),

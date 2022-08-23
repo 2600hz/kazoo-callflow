@@ -47,6 +47,8 @@ new(Map) ->
 
 -spec new(kz_json:object(), kz_term:proplist(), handler_fun()) -> kz_types:sup_startchild_ret().
 new(JObj, Props, Fun) ->
+    kz_log:put_callid(JObj),
+    lager:debug("spawning new callflow executor"),
     Map = #{request => JObj
            ,props => Props
            ,callback => Fun

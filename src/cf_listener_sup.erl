@@ -78,10 +78,13 @@ cfg_shared_listener_type() ->
     kz_app_config:get_atom(?APP, <<"callflow_listeners_shared_instance_type">>, cfg_default_shared_listener_type()).
 
 cfg_default_shared_listener_type() ->
-    case cfg_listeners() of
-        1 -> queue;
-        _ -> hashed
-    end.
+    cfg_default_shared_listener_type(cfg_listeners()).
+
+-type listener_type() :: 'queue' | 'hashed'.
+
+-spec cfg_default_shared_listener_type(pos_integer()) -> listener_type().
+cfg_default_shared_listener_type(1) -> 'queue';
+cfg_default_shared_listener_type(_) -> 'hashed'.
 
 cfg_listeners() ->
     lists:max([1, kz_app_config:get_integer(?APP, <<"callflow_listeners">>, 5)]).
@@ -94,14 +97,33 @@ forward(Msg) ->
     {_, Listener, _, _} = lists:nth(Selected, Listeners),
     Listener ! {forward, Msg}.
 
--spec start_workers(pid()) -> ok.
-start_workers(Pid) ->
-    Workers = cfg_listeners(),
-    Pause = kz_app_config:get_integer(?APP, <<"callflow_listeners_start_pause_ms">>, ?MILLISECONDS_IN_SECOND * 3),
-    lager:debug("starting ~B workers with ~Bms pause between", [Workers, Pause]),
-    lists:foreach(fun(I) -> start_worker(I, Pid, Pause) end, lists:seq(1, Workers)).
+start_workers_pause('queue') ->
+    kz_app_config:get_integer(?APP, <<"callflow_listeners_start_pause_ms">>, ?MILLISECONDS_IN_SECOND * 3).
 
--spec start_worker(integer(), pid(), integer()) -> 'ok'.
+-spec start_workers(pid()) -> 'ok'.
+start_workers(Pid) ->
+    start_workers(Pid, cfg_listeners(), cfg_shared_listener(), cfg_shared_listener_type()).
+
+-spec start_workers(pid(), integer(), boolean(), listener_type()) -> 'ok'.
+start_workers(Pid, Workers, 'true', 'hashed') ->
+    lager:debug("starting ~B callflow listeners", [Workers]),
+    lists:foreach(fun(I) -> start_worker(I, Pid) end, lists:seq(1, Workers));
+start_workers(Pid, Workers, 'true', 'queue' = Type) ->
+    Pause = start_workers_pause(Type),
+    lager:debug("starting ~B callflow listeners with ~Bms pause between", [Workers, Pause]),
+    lists:foreach(fun(I) -> start_worker(I, Pid, Pause) end, lists:seq(1, Workers));
+start_workers(Pid, Workers, 'false', _) ->
+    lager:debug("starting ~B callflow listeners", [Workers]),
+    lists:foreach(fun(I) -> start_worker(I, Pid) end, lists:seq(1, Workers)).
+
+-spec start_worker(integer(), pid()) -> 'ok'.
+start_worker(Instance, Pid) ->
+    start_worker(Instance, Pid, 0).
+
+-spec start_worker(integer(), pid(), non_neg_integer()) -> 'ok'.
+start_worker(Instance, Pid, 0) ->
+    _ = supervisor:start_child(Pid, [Instance]),
+    'ok';
 start_worker(Instance, Pid, Pause) ->
     _ = supervisor:start_child(Pid, [Instance]),
     timer:sleep(Pause).
