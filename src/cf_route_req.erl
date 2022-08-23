@@ -32,8 +32,7 @@ handle_req(RouteReq, Props) ->
     lager:debug("handle route request with fetch-id ~s", [kapi_route:fetch_id(RouteReq)]),
     'true' = kapi_route:req_v(RouteReq),
     ControllerQ = kapi:encode_pid(props:get_value('queue', Props)),
-    Routines = [fun maybe_referred_call/1
-               ,fun maybe_device_redirected/1
+    Routines = [fun maybe_restricted_endpoint/1
                ,{fun kapps_call:set_controller_queue/2, ControllerQ}
                ],
     Call = kapps_call:exec(Routines, kapps_call:from_route_req(RouteReq)),
@@ -116,8 +115,7 @@ maybe_reply_to_req(RouteReq, Call, Flow, NoMatch) ->
 %%------------------------------------------------------------------------------
 -spec allow_no_match(kapps_call:call()) -> boolean().
 allow_no_match(Call) ->
-    is_valid_endpoint(kapps_call:custom_channel_var(<<"Referred-By">>, Call), Call)
-        orelse is_valid_endpoint(kapps_call:custom_channel_var(<<"Redirected-By">>, Call), Call)
+    is_restricted_endpoint_set(Call)
         orelse allow_no_match_type(Call)
         orelse is_authz_context(Call).
 
@@ -284,48 +282,13 @@ update_call(Flow, NoMatch, Call) ->
 %% @doc process
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_referred_call(kapps_call:call()) -> kapps_call:call().
-maybe_referred_call(Call) ->
-    maybe_fix_restrictions(get_referred_by(Call), Call).
-
--spec maybe_device_redirected(kapps_call:call()) -> kapps_call:call().
-maybe_device_redirected(Call) ->
-    maybe_fix_restrictions(get_redirected_by(Call), Call).
-
--spec maybe_fix_restrictions(kz_term:api_binary(), kapps_call:call()) -> kapps_call:call().
-maybe_fix_restrictions('undefined', Call) -> Call;
-maybe_fix_restrictions(EndpointId, Call) ->
-    kapps_call:kvs_store(?RESTRICTED_ENDPOINT_KEY, EndpointId, Call).
-
--spec get_referred_by(kapps_call:call()) -> kz_term:api_binary().
-get_referred_by(Call) ->
-    ReferredBy = kapps_call:custom_channel_var(<<"Referred-By">>, Call),
-    endpoint_from_sip_params(ReferredBy).
-
--spec get_redirected_by(kapps_call:call()) -> kz_term:api_binary().
-get_redirected_by(Call) ->
-    RedirectedBy = kapps_call:custom_channel_var(<<"Redirected-By">>, Call),
-    endpoint_from_sip_params(RedirectedBy).
-
--spec is_valid_endpoint(kz_term:api_binary(), kapps_call:call()) -> boolean().
-is_valid_endpoint('undefined', _) -> 'false';
-is_valid_endpoint(Contact, Call) ->
-    case endpoint_from_sip_params(Contact) of
-        undefined -> false;
-        EndpointId ->
-            case kz_datamgr:open_cache_doc(kapps_call:account_db(Call), EndpointId) of
-                {'ok', _Endpoint} ->
-                    lager:debug("matched ~p to endpoint ~p", [Contact, EndpointId]),
-                    'true';
-                {'error', 'not_found'} -> 'false'
-            end
+-spec maybe_restricted_endpoint(kapps_call:call()) -> kapps_call:call().
+maybe_restricted_endpoint(Call) ->
+    case kapps_call:restricted_endpoint_id(Call) of
+        'undefined' -> Call;
+        EndpointId -> kapps_call:kvs_store(?RESTRICTED_ENDPOINT_KEY, EndpointId, Call)
     end.
 
--spec endpoint_from_sip_params(kz_term:api_ne_binary()) -> kz_term:api_ne_binary().
-endpoint_from_sip_params(undefined) -> undefined;
-endpoint_from_sip_params(Contact) ->
-    case kzsip_uri:uris(Contact) of
-        [#uri{ext_opts=Opts1, opts=Opts2}] ->
-            props:get_value(<<"endpoint_id">>, Opts1 ++ Opts2);
-        _Else -> undefined
-    end.
+-spec is_restricted_endpoint_set(kapps_call:call()) -> boolean().
+is_restricted_endpoint_set(Call) ->
+    kapps_call:kvs_fetch(?RESTRICTED_ENDPOINT_KEY, Call) =/= 'undefined'.

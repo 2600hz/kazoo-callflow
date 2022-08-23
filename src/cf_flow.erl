@@ -163,6 +163,7 @@ cache_patterns(AccountId, Patterns) ->
           {'ok', {kz_json:object(), kz_term:api_binary()}} |
           {'error', any()}.
 lookup_patterns(Number, AccountId) ->
+    lager:debug("searching for callflow patterns in ~s to satisfy '~s'", [AccountId, Number]),
     case fetch_patterns(AccountId) of
         {'ok', Patterns} -> lookup_callflow_patterns(Patterns, Number, AccountId);
         _Error -> maybe_use_nomatch(Number, AccountId)
@@ -174,6 +175,7 @@ lookup_patterns(Number, AccountId) ->
 %%------------------------------------------------------------------------------
 -spec lookup_callflow_patterns(patterns(), kz_term:ne_binary(), kz_term:ne_binary()) -> lookup_ret().
 lookup_callflow_patterns(Patterns, Number, AccountId) ->
+    lager:debug("testing callflow patterns in ~s to satisfy '~s'", [AccountId, Number]),
     case test_callflow_patterns(Patterns, Number) of
         'no_match' -> maybe_use_nomatch(Number, AccountId);
         {<<>>, #pattern{flow_id=FlowId}=_Pattern} ->

@@ -105,14 +105,14 @@
 start_link(Map, Seq) ->
     gen_listener:start_link(?SERVER, initial_bindings(Map), [Map#{sequence => Seq}]).
 
-initial_bindings(#{instance := Instance, shared := false}) ->
+initial_bindings(#{instance := Instance, shared := 'false'}) ->
     [{'responders', ?RESPONDERS}
     ,{'bindings', ?BINDINGS}
     ,{'queue_name', ?QUEUE_NAME(Instance)}
     ,{'queue_options', ?QUEUE_OPTIONS}
     ,{'consume_options', ?CONSUME_OPTIONS}
     ];
-initial_bindings(#{instance := Instance, shared := true}) ->
+initial_bindings(#{instance := Instance, shared := 'true'}) ->
     [{'responders', ?RESPONDERS}
     ,{'bindings', ?NODE_BINDINGS}
     ,{'queue_name', ?QUEUE_NAME(Instance)}
@@ -145,14 +145,20 @@ handle_call(_Msg, _From, State) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle_cast(any(), state()) -> kz_types:handle_cast_ret_state(state()).
-handle_cast({'gen_listener', {'created_queue', Q}}, #{instance_queue := Q, shared := false} = State) ->
+handle_cast({'gen_listener', {'created_queue', Q}}
+           ,#{instance_queue := Q, shared := 'false'} = State
+           ) ->
     lager:debug("started instance queue ~s", [Q]),
     {'noreply', State};
-handle_cast({'gen_listener', {'created_queue', Q}}, #{instance_queue := Q, shared := true, share_type := hashed} = State) ->
+handle_cast({'gen_listener', {'created_queue', Q}}
+           ,#{instance_queue := Q, shared := 'true', share_type := 'hashed'} = State
+           ) ->
     lager:debug("started instance queue ~s, starting hashed shared queue", [Q]),
     gen_server:cast(self(), {'add_queue', ?HASHED_QUEUE_NAME, ?HASHED_QUEUE_PARAMS, ?HASHED_BINDINGS(State)}),
     {'noreply', State};
-handle_cast({'gen_listener', {'created_queue', Q}}, #{instance_queue := Q, shared := true, share_type := queue} = State) ->
+handle_cast({'gen_listener', {'created_queue', Q}}
+           ,#{instance_queue := Q, shared := 'true', share_type := 'queue'} = State
+           ) ->
     lager:debug("started instance queue ~s, starting shared queue", [Q]),
     gen_server:cast(self(), {'add_queue', ?SHARED_QUEUE_NAME, ?SHARED_QUEUE_PARAMS, ?SHARED_BINDINGS}),
     {'noreply', State};
@@ -189,7 +195,7 @@ handle_info(_Info, State) ->
 -spec handle_event(kz_json:object(), kz_term:proplist(), state()) -> gen_listener:handle_event_return().
 handle_event(JObj, Props, #{instance_queue := Q} = State) ->
     Msg = kapi:delivery_message(JObj, Props),
-    handle_msg(Msg, props:set_value(queue, Q, Props), State).
+    handle_msg(Msg, props:set_value('queue', Q, Props), State).
 
 %%------------------------------------------------------------------------------
 %% @doc This function is called by a `gen_listener' when it is about to
