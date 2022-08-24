@@ -1060,9 +1060,8 @@ play_message_menu(Prompt
         {'ok', 'callback'} ->
             maybe_handle_vm_callback(CurrentMessage, Messages, PrevMessages, Count, Box, Call);
         {'error', 'no_selection'} ->
-            _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
+            _ = kapps_call_command:b_prompt(<<"fault-too_many_invalid_entries">>, Call),
             lager:info("hanging up channel after ~p attempts to get a message action", [?MAX_MESSAGE_MENU_LOOPS]),
-            _ = kapps_call_command:b_prompt(<<"vm-goodbye">>, Call),
             _ = kapps_call_command:hangup(Call),
             'ok';
         {'error', _} ->
