@@ -651,9 +651,10 @@ find_channels(Usernames, Call) ->
     find_channels(Usernames, Realm).
 
 make_user_channels_query(Req) ->
+    %% we want to collect ALL responses from ecallmgr before extracting channel information
     kz_amqp_worker:call_collect(Req
                                ,fun kapi_call:publish_query_user_channels_req/1
-                               ,{'ecallmgr', fun kapi_call:query_user_channels_resp_v/1, 'true'}
+                               ,{'ecallmgr', fun kapi_call:query_user_channels_resp_v/1, 'true', 'true'}
                                ).
 
 handle_user_channels_resp({'ok', ChannelResps}) -> extract_channels(ChannelResps);
