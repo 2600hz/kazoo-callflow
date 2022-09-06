@@ -277,13 +277,9 @@ maybe_start_endpoint_metaflow(Call, EndpointId) ->
 
 -spec maybe_start_recording(kapps_call:call()) -> kapps_call:call().
 maybe_start_recording(Call) ->
-    maybe_start_recording(Call, kapps_call:inception_type(Call)).
-
-maybe_start_recording(Call0, FromNetwork) ->
-    Call1 = maybe_start_account_recording(Call0, FromNetwork),
-    maybe_start_endpoint_recording(Call1, FromNetwork).
-
-maybe_start_account_recording(Call, FromNetwork) ->
+    %% NOTE: endpoint inbound recording is handled by {@see kz_endpoint_v5:maybe_record_endpoint/1}
+    %% NOTE: account/endpoint outbound recording is handled individually by cf modules via {@see cf_util:maybe_start_recording_to/2}
+    FromNetwork = kapps_call:inception_type(Call),
     case kz_endpoint:get(kapps_call:account_id(Call), Call) of
         {'ok', Endpoint} ->
             maybe_start_account_recording(Call, FromNetwork, Endpoint);
@@ -299,24 +295,6 @@ maybe_start_account_recording(Call, FromNetwork, Endpoint) ->
         {'true', Call1} ->
             lager:debug("account recording started (~s inbound)", [FromNetwork]),
             Call1
-    end.
-
-maybe_start_endpoint_recording(Call, <<"onnet">>=FromNetwork) ->
-    maybe_start_endpoint_recording(Call, FromNetwork, cf_util:get_endpoint_id(Call));
-maybe_start_endpoint_recording(Call, <<"offnet">>=_FromNetwork) ->
-    %% calls from offnet won't start endpoint recording unless an
-    %% endpoint is dialed
-    Call.
-
-maybe_start_endpoint_recording(Call, FromNetwork, EndpointId) ->
-    {'ok', Endpoint} = kz_endpoint:get(EndpointId, Call),
-    case kz_endpoint_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
-        'false' ->
-            Call;
-        {'true', {ActionKey, ActionApp}} ->
-            lager:debug("starting endpoint recording (~s inbound)", [FromNetwork]),
-            NewActions = kz_json:set_value(ActionKey, ActionApp, kz_json:new()),
-            kapps_call:kvs_store('outbound_actions', NewActions, Call)
     end.
 
 -spec include_denied_call_restrictions(kapps_call:call()) -> kapps_call:call().
