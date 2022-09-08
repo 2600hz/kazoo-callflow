@@ -1444,6 +1444,7 @@ play_message_menu(Prompt, #mailbox{keys=#keys{replay=Replay
         {'ok', Callback} -> {'ok', 'callback'};
         {'error', _}=E -> E;
         _ ->
+            _ = kapps_call_command:b_prompt(<<"menu-invalid_entry">>, Call),
             play_message_menu(message_menu(), Box, Call, RetryLoop-1)
     end.
 
