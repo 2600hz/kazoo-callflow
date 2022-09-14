@@ -634,7 +634,7 @@ find_channels([_|_]=Usernames, <<Realm/binary>>) ->
     lager:debug("finding channels for realm ~s, usernames ~p", [Realm, Usernames]),
     Req = [{<<"Realm">>, Realm}
           ,{<<"Usernames">>, Usernames}
-          ,{<<"Active-Only">>, 'false'}
+          ,{<<"Active-Only">>, 'true'}
           | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
           ],
     handle_user_channels_resp(make_user_channels_query(Req));
@@ -642,7 +642,7 @@ find_channels(<<Username/binary>>, <<Realm/binary>>) ->
     lager:debug("finding channels for realm ~s, username ~s", [Realm, Username]),
     Req = [{<<"Realm">>, Realm}
           ,{<<"Username">>, Username}
-          ,{<<"Active-Only">>, 'false'}
+          ,{<<"Active-Only">>, 'true'}
           | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
           ],
     handle_user_channels_resp(make_user_channels_query(Req));
@@ -654,7 +654,7 @@ make_user_channels_query(Req) ->
     %% we want to collect ALL responses from ecallmgr before extracting channel information
     kz_amqp_worker:call_collect(Req
                                ,fun kapi_call:publish_query_user_channels_req/1
-                               ,{'ecallmgr', fun kapi_call:query_user_channels_resp_v/1, 'true', 'true'}
+                               ,{'ecallmgr', 'true'}
                                ).
 
 handle_user_channels_resp({'ok', ChannelResps}) -> extract_channels(ChannelResps);
@@ -668,7 +668,7 @@ extract_channels(ChannelResps) ->
 
 -spec extract_channels_fold(kz_json:object(), kz_json:objects()) -> kz_json:objects().
 extract_channels_fold(ChannelResp, Channels) ->
-    kz_json:get_list_value(<<"Channels">>, ChannelResp) ++ Channels.
+    kz_json:get_list_value(<<"Channels">>, ChannelResp, []) ++ Channels.
 
 -spec check_value_of_fields(kz_term:proplist(), boolean(), kz_json:object(), kapps_call:call()) ->
           boolean().

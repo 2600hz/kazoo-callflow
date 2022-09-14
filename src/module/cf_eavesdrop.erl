@@ -70,8 +70,11 @@ maybe_allowed_to_eavesdrop(Data, Call) ->
 -spec eavesdrop_channel(kz_term:ne_binaries(), kapps_call:call()) -> 'ok'.
 eavesdrop_channel(Usernames, Call) ->
     case cf_util:find_channels(Usernames, Call) of
-        [] -> no_channels(Call);
-        Channels -> eavesdrop_a_channel(Channels, Call)
+        [] ->
+            lager:info("failed to find channels for usernames ~s", [Usernames]),
+            no_channels(Call);
+        Channels ->
+            eavesdrop_a_channel(Channels, Call)
     end.
 
 -spec eavesdrop_a_channel(kz_json:objects(), kapps_call:call()) -> 'ok'.
