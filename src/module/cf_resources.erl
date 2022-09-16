@@ -402,21 +402,7 @@ get_to_did(Data, Call) ->
 get_request_did(Data, Call) ->
     case kz_json:is_true(<<"do_not_normalize">>, Data) of
         'true' -> get_original_request_user(Call);
-        'false' ->
-            case get_endpoint(Call) of
-                {'ok', Endpoint} -> maybe_apply_dialplan(Endpoint, Data, Call);
-                _Else -> maybe_bypass_e164(Data, Call)
-            end
-    end.
-
--spec maybe_apply_dialplan(kz_json:object(), kz_json:object(), kapps_call:call()) -> kz_term:ne_binary().
-maybe_apply_dialplan(Endpoint, Data, Call) ->
-    case kz_json:get_value(<<"dial_plan">>, Endpoint, []) of
-        [] -> maybe_bypass_e164(Data, Call);
-        DialPlan ->
-            Request = kapps_call:request(Call),
-            [RequestUser, _] = binary:split(Request, <<"@">>),
-            cf_util:apply_dialplan(RequestUser, DialPlan)
+        'false' -> maybe_bypass_e164(Data, Call)
     end.
 
 -spec maybe_bypass_e164(kz_json:object(), kapps_call:call()) -> kz_term:ne_binary().
