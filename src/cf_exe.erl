@@ -962,7 +962,53 @@ handle_channel_replaced(Call, CallEvent, Notify) ->
 -spec handle_channel_bridged(pid(), kz_term:pids(), kz_call_event:payload(), kapps_call:call()) -> 'ok'.
 handle_channel_bridged(Self, Notify, CallEvent, Call) ->
     gen_server:cast(Self, {'set_call', kapps_call:set_call_bridged('true', Call)}),
+    kz_process:spawn(fun maybe_announce_call_is_being_recorded/1, [Call]),
     relay_message(Notify, CallEvent).
+
+-spec maybe_announce_call_is_being_recorded(kapps_call:call()) -> 'ok'.
+maybe_announce_call_is_being_recorded(Call) ->
+    maybe_announce_call_is_being_recorded(Call, kapps_call:is_recording(Call)).
+
+-spec maybe_announce_call_is_being_recorded(kapps_call:call(), boolean()) -> 'ok'.
+maybe_announce_call_is_being_recorded(Call, 'true') ->
+    {'ok', Account} = kzd_accounts:fetch(kapps_call:account_id(Call)),
+    AccCallRecConf = kz_endpoint:merge_call_recording(kzd_accounts:call_recording_account(Account)),
+    ShouldPlayPrompt = kz_json:is_true([kapps_call:direction(Call) %% Direction: inbound | outbound.
+                                       ,kapps_call:inception_type(Call) %% Origin: onnet | offnet
+                                       ,<<"should_announce_when_recording">>
+                                       ]
+                                      ,AccCallRecConf
+                                      ),
+    maybe_announce_call_is_being_recorded(Call, 'true', ShouldPlayPrompt);
+maybe_announce_call_is_being_recorded(Call, 'false') ->
+    lager:debug("call is not being recorded, not trying to play prompt"),
+    maybe_announce_call_is_being_recorded(Call, 'false', 'false').
+
+-spec maybe_announce_call_is_being_recorded(kapps_call:call(), boolean(), boolean()) -> 'ok'.
+maybe_announce_call_is_being_recorded(Call, 'true', 'true') ->
+    PromptId = <<"general-call_is_being_recorded">>,
+    lager:debug("playing ~s prompt", PromptId),
+    CallId = kapps_call:call_id_direct(Call),
+    Prompt = kapps_call:get_prompt(Call, PromptId),
+    Commands = [kz_json:from_list([{<<"Application-Name">>, <<"noop">>}
+                                  ,{<<"Call-ID">>, CallId}
+                                  ,{<<"Msg-ID">>, kapps_call_command:noop_id()}
+                                  ])
+               ,kz_json:from_list([{<<"Application-Name">>, <<"play">>}
+                                  ,{<<"Media-Name">>, Prompt}
+                                  ,{<<"Terminators">>, ?ANY_DIGIT}
+                                  ,{<<"Leg">>, 'undefined'}
+                                  ,{<<"Call-ID">>, CallId}
+                                  ,{<<"Endless-Playback">>, 'false'}
+                                  ])
+               ],
+    Command = [{<<"Application-Name">>, <<"queue">>}
+              ,{<<"Commands">>, Commands}
+              ,{<<"Insert-At">>, <<"now">>}
+              ],
+    kapps_call_command:send_command(Command, Call);
+maybe_announce_call_is_being_recorded(_Call, _, _) ->
+    'ok'.
 
 -spec handle_usurp(pid(), kapps_call:call(), kz_call_event:payload()) -> 'ok'.
 handle_usurp(Self, Call, CallEvent) ->
