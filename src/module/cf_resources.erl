@@ -116,9 +116,9 @@ handle_bridge_failure('true', Cause, _Code, Call) ->
     _ = kz_call_response:send(kapps_call:call_id(Call)
                              ,kapps_call:control_queue(Call)
                              ,kz_json:get_value(<<"Code">>, Response)
-                             ,kz_json:get_value(<<"Message">>, Response)
+                             ,Cause
                              ),
-    cf_exe:stop(Call, Cause).
+    cf_exe:hard_stop(Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
