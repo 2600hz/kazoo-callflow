@@ -76,14 +76,14 @@ bridge(Data, Call0, Endpoints) ->
         {'ok', JObj} ->
             lager:info("completed successful bridge to user"),
             stop(Call, kz_call_event:channel_answer_state(JObj));
-        {'fail', _JObj}=Reason ->
+        {'fail', JObj}=Reason ->
             lager:info("bridge to user failed : ~s / ~s / ~s"
-                      ,[kz_call_event:application_response(_JObj)
-                       ,kz_call_event:hangup_cause(_JObj)
-                       ,kz_call_event:hangup_code(_JObj)
+                      ,[kz_call_event:application_response(JObj)
+                       ,kz_call_event:hangup_cause(JObj)
+                       ,kz_call_event:hangup_code(JObj)
                        ]
                       ),
-            maybe_handle_bridge_failure(Reason, Call);
+            maybe_handle_bridge_failure(kz_call_event:channel_answer_state(JObj), Reason, Call);
         {'error', _R} ->
             lager:info("error bridging to user: ~p", [_R]),
             cf_exe:continue(Call)
@@ -93,12 +93,20 @@ bridge(Data, Call0, Endpoints) ->
 stop(Call, <<"hangup">>) -> cf_exe:hard_stop(Call);
 stop(Call, _) -> cf_exe:stop(Call).
 
--spec maybe_handle_bridge_failure(any(), kapps_call:call()) -> 'ok'.
-maybe_handle_bridge_failure(Reason, Call) ->
+-type bridge_failure_cause() :: {'fail', kz_json:object()}.
+
+-spec maybe_handle_bridge_failure(kz_term:api_ne_binary(), bridge_failure_cause(), kapps_call:call()) -> 'ok'.
+maybe_handle_bridge_failure(<<"hangup">>, _Reason, Call) ->
+    cf_exe:hard_stop(Call);
+maybe_handle_bridge_failure(_, Reason, Call) ->
     case cf_util:handle_bridge_failure(Reason, Call) of
-        'not_found' -> cf_exe:continue(Call);
+        'not_found' -> cf_exe:continue(hangup_cause(Reason), Call);
         'ok' -> 'ok'
     end.
+
+-spec hangup_cause(bridge_failure_cause()) -> kz_term:ne_binary().
+hangup_cause({fail, JObj}) ->
+    kz_call_event:hangup_cause(JObj, <<"UNSPECIFIED">>).
 
 %%------------------------------------------------------------------------------
 %% @doc Loop over the provided endpoints for the callflow and build the
