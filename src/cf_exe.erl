@@ -802,10 +802,10 @@ do_launch_cf_module(#state{call=Call
     State#state{cf_module_pid=PidRef
                ,cf_module_old_pid=OldPidRef
                ,call=Call1
-               ,cause = undefined
+               ,cause = 'undefined'
                }.
 
--spec find_cf_module(kz_json:object()) -> 'undefined' | skip | {'local' | 'remote', atom()}.
+-spec find_cf_module(kz_json:object()) -> 'undefined' | 'skip' | {'local' | 'remote', atom()}.
 find_cf_module(Flow) ->
     Module = kz_json:get_ne_binary_value(<<"module">>, Flow),
     ModuleBin = <<"cf_", Module/binary>>,
@@ -824,7 +824,7 @@ find_cf_module(Flow) ->
         'false' when SkipModule ->
             lager:debug("skipping callflow module ~s (handle exported: ~s skip_module: ~s)"
                        ,[CFModule, IsExported, SkipModule]),
-            skip;
+            'skip';
         'false' ->
             lager:debug("non-existing callflow action module ~s", [CFModule]),
             'undefined'
@@ -1061,31 +1061,31 @@ get_pid(_) -> 'undefined'.
 
 -spec maybe_hangup_call(state()) -> 'ok'.
 maybe_hangup_call(#state{call=Call
-                        ,hangup_info = undefined
-                        ,cause = undefined
-                        ,hard_stop = false
+                        ,hangup_info = 'undefined'
+                        ,cause = 'undefined'
+                        ,hard_stop = 'false'
                         }) ->
-    hangup_call(Call, undefined);
+    hangup_call(Call, 'undefined');
 maybe_hangup_call(#state{call=Call
-                        ,hangup_info = undefined
+                        ,hangup_info = 'undefined'
                         ,cause = Cause
-                        ,hard_stop = false
+                        ,hard_stop = 'false'
                         }) ->
     case kapps_call:is_call_forward(Call) of
-        true -> send_cfwd_response(Call, Cause);
-        false -> send_response(Call, Cause)
+        'true' -> send_cfwd_response(Call, Cause);
+        'false' -> send_response(Call, Cause)
     end;
 maybe_hangup_call(#state{}) -> 'ok'.
 
 -spec send_cfwd_response(kapps_call:call(), kz_term:api_ne_binary()) -> 'ok'.
-send_cfwd_response(_Call, undefined) -> ok;
+send_cfwd_response(_Call, 'undefined') -> 'ok';
 send_cfwd_response(Call, Cause) ->
     case kz_call_response:get_response(Cause, Call) of
-        undefined -> ok;
+        'undefined' -> 'ok';
         Response -> send_cfwd_response(Call, Cause, Response)
     end.
 
--spec send_cfwd_response(kapps_call:call(), kz_term:ne_binary(), kz) -> 'ok'.
+-spec send_cfwd_response(kapps_call:call(), kz_term:ne_binary(), kz_json:object()) -> 'ok'.
 send_cfwd_response(Call, Cause, Response) ->
     CallId = kapps_call:call_id_direct(Call),
     Queue = kapps_call:control_queue(Call),
@@ -1101,7 +1101,7 @@ send_cfwd_response(Call, Cause, Response) ->
 send_response(Call, Cause) ->
     case kz_call_response:send_default(Call, Cause) of
         {'error', 'no_response'} ->
-            hangup_call(Call, undefined);
+            hangup_call(Call, 'undefined');
         {'ok', _NoopId} ->
             lager:debug("sent default response for ~s (~s)", [Cause, _NoopId])
     end.

@@ -105,7 +105,7 @@ maybe_handle_bridge_failure(_, Reason, Call) ->
     end.
 
 -spec hangup_cause(bridge_failure_cause()) -> kz_term:ne_binary().
-hangup_cause({fail, JObj}) ->
+hangup_cause({'fail', JObj}) ->
     kz_call_event:hangup_cause(JObj, <<"UNSPECIFIED">>).
 
 %%------------------------------------------------------------------------------
