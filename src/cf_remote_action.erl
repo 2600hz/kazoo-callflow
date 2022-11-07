@@ -85,6 +85,8 @@ handle_action_return({'stop', Reason}, Call) ->
     cf_exe:stop(Call, Reason);
 handle_action_return('stop', Call) ->
     cf_exe:stop(Call);
+handle_action_return('hard_stop', Call) ->
+    cf_exe:hard_stop(Call);
 handle_action_return('transfer', Call) ->
     cf_exe:transfer(Call);
 handle_action_return('usurp', Call) ->
