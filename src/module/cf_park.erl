@@ -129,7 +129,10 @@ maybe_record_call(Call) ->
     %% values when endpoint's call_recording is not configured and in this case that scenario needs
     %% to be handle different.
     {'ok', Endpoint} = kzd_devices:fetch(AccountId, kapps_call:authorizing_id(Call)),
-    {'ok', User} = kzd_users:fetch(AccountId, kapps_call:owner_id(Call)),
+    {'ok', User} = case kapps_call:owner_id(Call) of
+                       'undefined' -> {'ok', kz_json:new()}; %% Unassigned device.
+                       OwnerId -> kzd_users:fetch(AccountId, OwnerId)
+                   end,
     {'ok', Account} = kzd_accounts:fetch(AccountId),
     EndpointRec = add_debug_info(kzd_devices:call_recording(Endpoint, kz_json:new()), Endpoint),
     UserRec = add_debug_info(kzd_users:call_recording(User, kz_json:new()), User),
