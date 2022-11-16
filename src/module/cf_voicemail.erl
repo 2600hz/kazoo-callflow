@@ -194,6 +194,7 @@
                  ,skip_instructions = 'false' :: boolean()
                  ,skip_greeting = 'false' :: boolean()
                  ,skip_envelope = 'false' :: boolean()
+                 ,envelope_type = <<"default">> :: kz_term:api_ne_binary()
                  ,announcement_only = 'false' :: boolean()
                  ,unavailable_media_id :: kz_term:api_ne_binary()
                  ,temporary_unavailable_media_id :: kz_term:api_ne_binary()
@@ -924,7 +925,17 @@ message_number(Messages, Count) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec message_envelope(kz_json:object(), mailbox()) -> kapps_call_command:audio_macro_prompts().
-message_envelope(Message, #mailbox{timezone=Timezone}) ->
+message_envelope(Message, #mailbox{timezone=Timezone, envelope_type = <<"caller_and_time">>}) ->
+    CallerId = kz_json:get_ne_binary_value(?MSG_KEY_CALLER_ID_NUMBER, Message),
+    [{'prompt', <<"vm-you_have">>}
+    ,{'prompt', ?PROMPT_RECEIVED}
+    ,{'prompt', <<"vm-a_call_from">>}
+    ,{'say', CallerId}
+    ,{'prompt', <<"vm-at">>}
+    ,{'say', get_unix_epoch(kz_json:get_integer_value(?MSG_KEY_TIMESTAMP, Message), Timezone), <<"current_date_time">>}
+    ];
+
+message_envelope(Message, #mailbox{timezone = Timezone}) ->
     [{'prompt', ?PROMPT_RECEIVED}
     ,{'say', get_unix_epoch(kz_json:get_integer_value(?MSG_KEY_TIMESTAMP, Message), Timezone), <<"current_date_time">>}
     ].
@@ -2006,6 +2017,8 @@ get_mailbox_profile(Data, Call) ->
                          kzd_vmboxes:skip_greeting(MailboxJObj, Default#mailbox.skip_greeting)
                     ,skip_envelope =
                          kzd_vmboxes:skip_envelope(MailboxJObj, Default#mailbox.skip_envelope)
+                    ,envelope_type =
+                         kzd_vmboxes:envelope_type(MailboxJObj, Default#mailbox.envelope_type)
                     ,pin =
                          kzd_vmboxes:pin(MailboxJObj, <<>>)
                     ,timezone =
