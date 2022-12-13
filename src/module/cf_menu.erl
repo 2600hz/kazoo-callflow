@@ -7,6 +7,9 @@
 %%%   <dt>`id'</dt>
 %%%   <dd>ID of menu document.</dd>
 %%%
+%%%   <dt>`replay_digits'</dt>
+%%%   <dd>Digits that will replay the menu greeting</dd>
+%%%
 %%%   <dt>`interdigit_timeout'</dt>
 %%%   <dd><strong>Optional: </strong>How long to wait for the next DTMF, in milliseconds</dd>
 %%% </dl>
@@ -50,6 +53,7 @@
                       ,hunt_allow = <<>> :: binary()
                       ,record_pin = <<>> :: binary()
                       ,record_from_offnet = 'false' :: boolean()
+                      ,replay_digits = <<>> :: binary()
                       ,greeting_id :: kz_term:api_ne_binary()
                       ,exit_media = 'true' :: boolean() | kz_term:ne_binary()
                       ,transfer_media = 'true' :: boolean() | kz_term:ne_binary()
@@ -109,22 +113,30 @@ menu_loop(#cf_menu_data{max_length=MaxLength
 menu_handle_digits(#cf_menu_data{retries=Retries
                                 ,record_from_offnet=RecOffnet
                                 ,record_pin=RecordPin
+                                ,replay_digits=ReplayDigits
                                 }=Menu, Call, Digits) ->
-    %% this try_match_digits calls hunt_for_callflow() based on the digits dialed
-    %% if it finds a callflow, the main CFPid will move on to it and try_match_digits
-    %% will return true, matching here, and causing menu_loop to exit; this is
-    %% expected behaviour as CFPid has moved on from this invocation
     AllowRecord = (RecOffnet
                    orelse kapps_call:inception(Call) =:= 'undefined'
                   ),
-    case try_match_digits(Digits, Menu, Call) of
-        'true' -> lager:debug("hunt callflow found");
-        'false' when Digits =:= RecordPin, AllowRecord ->
-            menu_handle_record(Menu, Call);
-        'false' ->
-            lager:info("invalid selection ~w", [Digits]),
-            _ = play_invalid_prompt(Menu, Call),
-            menu_loop(Menu#cf_menu_data{retries=Retries - 1}, Call)
+    %% if entered digits match "replay_digits" it will replay the menu_loop
+    case Digits =:= ReplayDigits of
+        'true' -> menu_loop(Menu#cf_menu_data{retries=Retries}, Call);
+        'false' ->    
+            %% this try_match_digits calls hunt_for_callflow() based on the digits dialed
+            %% if it finds a callflow, the main CFPid will move on to it and try_match_digits
+            %% will return true, matching here, and causing menu_loop to exit; this is
+            %% expected behaviour as CFPid has moved on from this invocation
+            case try_match_digits(Digits, Menu, Call) of
+                'true' -> lager:debug("hunt callflow found");
+                'false' when Digits =:= ReplayDigits ->
+                    menu_loop(Menu#cf_menu_data{retries=Retries}, Call);
+                'false' when Digits =:= RecordPin, AllowRecord ->
+                    menu_handle_record(Menu, Call);
+                'false' ->
+                    lager:info("invalid selection ~w", [Digits]),
+                    _ = play_invalid_prompt(Menu, Call),
+                    menu_loop(Menu#cf_menu_data{retries=Retries - 1}, Call)
+            end
     end.
 
 -spec menu_handle_record(menu(), kapps_call:call()) -> 'ok'.
@@ -579,6 +591,8 @@ get_menu_profile(Data, Call) ->
                                             ))
                          ,branch_extension =
                               kz_json:is_true(<<"branch_extension">>, JObj, Default#cf_menu_data.branch_extension)
+                         ,replay_digits =
+                              kz_json:get_value(<<"replay_digits">>, Data, Default#cf_menu_data.replay_digits)
                          };
         {'error', R} ->
             lager:info("failed to load menu route ~s, ~w", [Id, R]),
