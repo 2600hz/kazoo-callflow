@@ -121,7 +121,7 @@ menu_handle_digits(#cf_menu_data{retries=Retries
     %% if entered digits match "replay_digits" it will replay the menu_loop
     case Digits =:= ReplayDigits of
         'true' -> menu_loop(Menu#cf_menu_data{retries=Retries}, Call);
-        'false' ->    
+        'false' ->
             %% this try_match_digits calls hunt_for_callflow() based on the digits dialed
             %% if it finds a callflow, the main CFPid will move on to it and try_match_digits
             %% will return true, matching here, and causing menu_loop to exit; this is
