@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2014-2022, 2600Hz
+%%% @copyright (C) 2014-2023, 2600Hz
 %%% @doc Plays tones to the caller
 %%%
 %%% A tone object is made up of a list of tones and duration-on/off times.
