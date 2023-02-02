@@ -157,7 +157,7 @@ channel_node(Channel) ->
 channel_uuid(Channel) ->
     kz_json:get_ne_binary_value(<<"uuid">>, Channel).
 
--spec channel_is_answered(kz_json:object()) -> kz_term:api_ne_binary().
+-spec channel_is_answered(kz_json:object()) -> boolean().
 channel_is_answered(Channel) ->
     kz_json:is_true(<<"answered">>, Channel).
 
