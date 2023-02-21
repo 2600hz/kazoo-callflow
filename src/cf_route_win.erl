@@ -283,19 +283,9 @@ maybe_start_recording(Call) ->
     FromNetwork = kapps_call:inception_type(Call),
     case kz_endpoint:get(kapps_call:account_id(Call), Call) of
         {'ok', Endpoint} ->
-            maybe_start_account_recording(Call, FromNetwork, Endpoint);
+            kz_account_recording:maybe_record_inbound(FromNetwork, Endpoint, Call);
         {'error', _E} ->
             Call
-    end.
-
--spec maybe_start_account_recording(kapps_call:call(), kz_term:ne_binary(), kz_json:object()) -> kapps_call:call().
-maybe_start_account_recording(Call, FromNetwork, Endpoint) ->
-    case kz_account_recording:maybe_record_inbound(FromNetwork, Endpoint, Call) of
-        'false' ->
-            Call;
-        {'true', Call1} ->
-            lager:debug("account recording started (~s inbound)", [FromNetwork]),
-            Call1
     end.
 
 -spec include_denied_call_restrictions(kapps_call:call()) -> kapps_call:call().
