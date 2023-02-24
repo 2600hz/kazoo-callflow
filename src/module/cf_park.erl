@@ -28,8 +28,8 @@
 
 -define(MOD_CONFIG_CAT, <<(?CF_CONFIG_CAT)/binary, ".park">>).
 
--define(DEFAULT_RINGBACK_TM, kapps_config:get_integer(?MOD_CONFIG_CAT, <<"default_ringback_timeout">>, 120000)).
--define(DEFAULT_CALLBACK_TM, kapps_config:get_integer(?MOD_CONFIG_CAT, <<"default_callback_timeout">>, 30000)).
+-define(DEFAULT_RINGBACK_TM, kapps_config:get_integer(?MOD_CONFIG_CAT, <<"default_ringback_timeout">>, 2 * ?MILLISECONDS_IN_MINUTE)).
+-define(DEFAULT_CALLBACK_TM, kapps_config:get_integer(?MOD_CONFIG_CAT, <<"default_callback_timeout">>, 30 * ?MILLISECONDS_IN_SECOND)).
 
 -define(DEFAULT_PARKED_TYPE, <<"early">>).
 -define(SYSTEM_PARKED_TYPE, kapps_config:get_ne_binary(?MOD_CONFIG_CAT, <<"parked_presence_type">>, ?DEFAULT_PARKED_TYPE)).
@@ -385,7 +385,7 @@ wait_for_hangup(Call) ->
 -spec create_slot(kz_term:api_ne_binary(), kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object(), boolean(), kapps_call:call()) -> kz_json:object().
 create_slot(ParkerCallId, PresenceType, SlotNumber, Data, Attended, Call) ->
     CallId = cf_exe:callid(Call),
-    RingbackId = maybe_get_ringback_id(Call),
+    RingbackId = ringback_endpoint_id(Call),
     SlotCallId = kz_binary:rand_hex(16),
     User = slot_presence_id(SlotNumber, Data, Call),
     Realm = kapps_call:account_realm(Call),
@@ -576,7 +576,6 @@ update_call_id(Replaces, Call) ->
                        ,fun(J) -> kz_json:set_value(<<"CID-URI">>, kapps_call:from(Call), J) end
                        ,fun(J) -> kz_json:set_value(<<"Attended">>, 'false', J) end
                        ,fun(J) -> maybe_set_hold_media(J, Call) end
-                       ,fun(J) -> maybe_set_ringback_id(J, Call) end
                        ],
             Slot = kz_json:get_json_value(<<"slot">>, Doc),
             UpdatedSlot = lists:foldr(fun(F, J) -> F(J) end, Slot, Updaters),
@@ -590,17 +589,6 @@ update_call_id(Replaces, Call) ->
         {'error', _R} = E ->
             lager:info("failed to find parking slot with call id ~s: ~p", [Replaces, _R]),
             E
-    end.
-
--spec maybe_set_ringback_id(kz_json:object(), kapps_call:call()) -> kz_json:object().
-maybe_set_ringback_id(JObj, Call) ->
-    case kz_json:get_ne_binary_value(<<"Ringback-ID">>, JObj) =:= 'undefined'
-        andalso maybe_get_ringback_id(Call)
-    of
-        'undefined' -> JObj; %% no found ringback id
-        'false' -> JObj; %% ringback on JObj
-        RingbackId ->
-            kz_json:set_value(<<"Ringback-ID">>, RingbackId, JObj)
     end.
 
 -spec maybe_set_hold_media(kz_json:object(), kapps_call:call()) -> kz_json:object().
@@ -621,15 +609,6 @@ maybe_set_hold_media_from_ringback(JObj, Call, RingbackId) ->
         'undefined' -> JObj;
         RingbackHoldMedia ->
             kz_json:set_value(<<"Hold-Media">>, RingbackHoldMedia, JObj)
-    end.
-
--spec maybe_get_ringback_id(kapps_call:call()) -> kz_term:api_binary().
-maybe_get_ringback_id(Call) ->
-    Referred = kapps_call:custom_channel_var(<<"Referred-By">>, Call),
-    ReOptions = [{'capture', [1], 'binary'}],
-    case catch(re:run(Referred, <<".*sip:(.*)@.*">>, ReOptions)) of
-        {'match', [Match]} -> get_endpoint_id(Match, Call);
-        _ -> 'undefined'
     end.
 
 %%------------------------------------------------------------------------------
@@ -841,19 +820,6 @@ slots_configuration(Data) ->
 -spec slot_configuration(kz_json:object(), kz_term:ne_binary()) -> kz_json:object().
 slot_configuration(Data, SlotNumber) ->
     kz_json:get_json_value(SlotNumber, slots_configuration(Data), kz_json:new()).
-
-%%------------------------------------------------------------------------------
-%% @doc Ringback the device that parked the call
-%% @end
-%%------------------------------------------------------------------------------
--spec get_endpoint_id(kz_term:api_binary(), kapps_call:call()) -> kz_term:api_binary().
-get_endpoint_id('undefined', _) -> 'undefined';
-get_endpoint_id(Username, Call) ->
-    AccountDb = kapps_call:account_db(Call),
-    case cf_util:endpoint_id_by_sip_username(AccountDb, Username) of
-        {'ok', EndpointId} -> EndpointId;
-        {'error', _} -> 'undefined'
-    end.
 
 %%------------------------------------------------------------------------------
 %% @doc Ringback the device that parked the call
@@ -1116,3 +1082,14 @@ wait_for_bridge(Call) ->
     Call1 = cf_util:maybe_start_recording_to(Call, <<"onnet">>),
     _ = kapps_call_command:wait_for_bridge('infinity', Call1),
     cf_exe:continue(Call1).
+
+
+-spec ringback_endpoint_id(kapps_call:call()) -> kz_term:api_binary().
+ringback_endpoint_id(Call) ->
+    case kapps_call:restricted_endpoint_id(Call) of
+        undefined ->
+            kapps_call:authorizing_id(Call);
+        EndpointId ->
+            lager:debug("call was referred by endpoint id  => ~s / ~s", [kapps_call:account_id(Call), EndpointId]),
+            EndpointId
+    end.
