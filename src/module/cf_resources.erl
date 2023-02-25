@@ -173,6 +173,7 @@ build_offnet_request(Data, Call) ->
       ,{?KEY_PRIVACY_METHOD, props:get_value(?KEY_PRIVACY_METHOD, PrivacyFlags)}
       ,{?KEY_PRIVACY_HIDE_NAME, props:get_value(?KEY_PRIVACY_HIDE_NAME, PrivacyFlags)}
       ,{?KEY_PRIVACY_HIDE_NUMBER, props:get_value(?KEY_PRIVACY_HIDE_NUMBER, PrivacyFlags)}
+      ,{?KEY_SIP_DIVERSIONS, diversions(Call)}
       | add_headers(Data, Call)
       ]).
 
@@ -418,38 +419,37 @@ get_original_request_user(Call) ->
     [RequestUser, _] = binary:split(Request, <<"@">>),
     RequestUser.
 
+-spec remove_diversions(kz_json:json_kv()) -> boolean().
+remove_diversions({<<"Diversion", _/binary>>, _V}) -> false;
+remove_diversions(_KV) -> true.
+
+-spec endpoint_outbound_sip_headers(kapps_call:call()) -> kz_json:object().
+endpoint_outbound_sip_headers(Call) ->
+    case kz_endpoint:get(Call) of
+        {'ok', Endpoint} ->
+            kzd_devices:custom_sip_headers_outbound(Endpoint, kz_json:new());
+        {'error', _E} ->
+            kz_json:new()
+    end.
+
+-spec flow_outbound_sip_headers(kz_json:object()) -> kz_json:object().
+flow_outbound_sip_headers(Data) ->
+    case kz_json:get_json_value(<<"custom_sip_headers">>, Data) of
+        undefined -> kz_json:new();
+        CSHs -> CSHs
+    end.
+
 -spec get_sip_headers(kz_json:object(), kapps_call:call()) -> kz_term:api_object().
 get_sip_headers(Data, Call) ->
-    AuthEndCSH = case kz_endpoint:get(Call) of
-                     {'error', _E} ->
-                         kz_json:new();
-                     {'ok', AuthorizingEndpoint} ->
-                         kzd_devices:custom_sip_headers_outbound(AuthorizingEndpoint, 'undefined')
-                 end,
-    CSH = kz_json:get_json_value(<<"custom_sip_headers">>, Data),
-    Headers = maybe_merge(AuthEndCSH, CSH),
-
+    AuthEndCSH = endpoint_outbound_sip_headers(Call),
+    CSH = flow_outbound_sip_headers(Data),
+    Headers = kz_json:filter(fun remove_diversions/1, kz_json:merge(AuthEndCSH, CSH)),
     Routines = [fun(J) -> maybe_emit_account_id(J, Data, Call) end
-               ,fun(J) -> maybe_include_diversions(J, Call) end
                ],
     JObj = lists:foldl(fun(F, J) -> F(J) end, Headers, Routines),
     case kz_term:is_empty(JObj) of
         'true' -> 'undefined';
         'false' -> JObj
-    end.
-
--spec maybe_merge(kz_term:api_object(), kz_term:api_object()) -> kz_json:object().
-maybe_merge(JObj1, 'undefined') -> JObj1;
-maybe_merge('undefined', JObj2) -> JObj2;
-maybe_merge(JObj1, JObj2) -> kz_json:merge_jobjs(JObj1, JObj2).
-
--spec maybe_include_diversions(kz_json:object(), kapps_call:call()) ->
-          kz_json:object().
-maybe_include_diversions(JObj, Call) ->
-    case kapps_call:custom_sip_header(<<"Diversions">>, Call) of
-        'undefined' -> JObj;
-        Diversions ->
-            kz_json:set_value(<<"Diversions">>, Diversions, JObj)
     end.
 
 -spec maybe_emit_account_id(kz_json:object(), kz_json:object(), kapps_call:call()) ->
@@ -461,6 +461,43 @@ maybe_emit_account_id(JObj, Data, Call) ->
         'true' ->
             kz_json:set_value(<<"X-Account-ID">>, kapps_call:account_id(Call), JObj)
     end.
+
+diversions(Call) ->
+    case should_add_diversion_header(Call) of
+        'true' -> add_diversion(Call);
+        'false' -> kapps_call:diversions(Call)
+    end.
+
+diversion(Call) ->
+    Number = diversion_number(Call),
+    Reason = diversion_reason(Call),
+    list_to_binary(["<sip:", Number, "@", kapps_call:account_realm(Call), ">", ";reason=", Reason]).
+
+diversion_number(Call) ->
+    kapps_call:custom_channel_var(<<"Call-Forward-Number">>, Call).
+
+diversion_reason(Call) ->
+    kapps_call:custom_channel_var(<<"Call-Forward-Reason">>, <<"unconditional">>, Call).
+
+-spec add_diversion(kapps_call:call()) -> kz_term:api_ne_binaries().
+add_diversion(Call) ->
+    add_diversion(kapps_call:diversions(Call), diversion(Call)).
+
+-spec add_diversion(kz_term:api_ne_binaries(), kz_term:ne_binary()) ->
+          kz_term:api_ne_binaries().
+add_diversion('undefined', Diversion) ->
+    lager:debug("setting diversion as ~s", [Diversion]),
+    [Diversion];
+add_diversion(Diversions, Diversion) ->
+    lager:debug("add diversion as ~s", [Diversion]),
+    [Diversion | Diversions].
+
+-spec should_add_diversion_header(kapps_call:call()) -> boolean().
+should_add_diversion_header(Call) ->
+    kapps_call:is_call_forward(Call)
+        andalso kz_term:is_not_empty(diversion_number(Call))
+        andalso kz_term:is_true(kapps_call:custom_channel_var(<<"Retain-CID">>, 'false', Call))
+        andalso kapps_config:get_is_true(<<"kazoo_endpoint">>, <<"should_add_diversion_header">>, 'false').
 
 -spec get_ignore_early_media(kz_json:object()) -> kz_term:api_binary().
 get_ignore_early_media(Data) ->
