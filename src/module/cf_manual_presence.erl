@@ -36,25 +36,35 @@ handle(Data, Call) ->
             'nomatch' -> <<P/binary, "@", (kapps_call:request_realm(Call))/binary>>;
             _Else -> P
         end,
-    Status = kz_json:get_value(<<"status">>, Data, <<"idle">>),
+    Status = kz_json:get_ne_binary_value(<<"status">>, Data, <<"idle">>),
     update_presence(Status, PresenceId, Call),
     cf_exe:continue(Call).
 
 -spec update_presence(kz_term:ne_binary(), kz_term:ne_binary(), kapps_call:call()) -> 'ok'.
 update_presence(<<"idle">>, PresenceId, Call) ->
-    _ = update_doc(Call, PresenceId, <<"terminated">>),
+    update_doc(Call, PresenceId, <<"terminated">>),
     kapps_call_command:presence(<<"terminated">>, PresenceId, kz_term:to_hex_binary(crypto:hash('md5', PresenceId)));
 update_presence(<<"ringing">>, PresenceId, Call) ->
-    _ = update_doc(Call, PresenceId, <<"early">>),
+    update_doc(Call, PresenceId, <<"early">>),
     kapps_call_command:presence(<<"early">>, PresenceId, kz_term:to_hex_binary(crypto:hash('md5', PresenceId)));
 update_presence(<<"busy">>, PresenceId, Call) ->
-    _ = update_doc(Call, PresenceId, <<"confirmed">>),
+    update_doc(Call, PresenceId, <<"confirmed">>),
     kapps_call_command:presence(<<"confirmed">>, PresenceId, kz_term:to_hex_binary(crypto:hash('md5', PresenceId))).
 
--spec update_doc(kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary()) ->
-          {'ok', kz_json:object()} |
-          kz_datamgr:data_error().
-update_doc(Call, PresenceId, State) ->
+-spec update_doc(kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
+update_doc(Call, <<PresenceId/binary>>, <<State/binary>>) ->
     Update = [{[PresenceId], State}],
-    UpdateOptions = [{'update', Update}],
-    kz_datamgr:update_doc(kapps_call:account_db(Call), ?MANUAL_PRESENCE_DOC, UpdateOptions).
+    UpdateOptions = [{'update', Update}
+                    ,{'ensure_saved', 'true'}
+                    ,{'should_create', 'true'}
+                    ],
+    case kz_datamgr:update_doc(kapps_call:account_db(Call), ?MANUAL_PRESENCE_DOC, UpdateOptions) of
+        {'ok', _} ->
+            lager:debug("updated ~s to ~s", [PresenceId, State]);
+        {'error', _E} ->
+            lager:info("failed to update ~s to ~s: ~p", [PresenceId, State, _E])
+    end;
+update_doc(_Call, _PresenceId, _State) ->
+    lager:info("not updating, either presence_id(~s) or state(~s) undefined"
+              ,[_PresenceId, _State]
+              ).
