@@ -51,9 +51,7 @@ update_presence(<<"busy">>, PresenceId, Call) ->
     update_doc(Call, PresenceId, <<"confirmed">>),
     kapps_call_command:presence(<<"confirmed">>, PresenceId, kz_term:to_hex_binary(crypto:hash('md5', PresenceId))).
 
--spec update_doc(kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary()) ->
-          {'ok', kz_json:object()} |
-          kz_datamgr:data_error().
+-spec update_doc(kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
 update_doc(Call, <<PresenceId/binary>>, <<State/binary>>) ->
     Update = [{[PresenceId], State}],
     UpdateOptions = [{'update', Update}
