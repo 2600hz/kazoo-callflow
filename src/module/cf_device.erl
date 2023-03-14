@@ -31,7 +31,18 @@ handle(Data, Call) ->
         {'ok', JObj} ->
             lager:info("completed successful bridge to the device"),
             stop(Call, kz_call_event:channel_answer_state(JObj));
-        {'fail', _}=Reason -> maybe_handle_bridge_failure(Reason, Call);
+        {'fail', JObj}=Reason ->
+            lager:info("bridge to device failed : ~s / ~s / ~s"
+                      ,[kz_call_event:application_response(JObj)
+                       ,kz_call_event:hangup_cause(JObj)
+                       ,kz_call_event:hangup_code(JObj)
+                       ]
+                      ),
+            maybe_handle_bridge_failure(Data
+                                       ,Call
+                                       ,kz_call_event:channel_answer_state(JObj)
+                                       ,Reason
+                                       );
         {'error', _R} when is_atom(_R) ->
             lager:info("failed to build endpoint from device: ~p", [_R]),
             cf_exe:continue(Call);
@@ -46,8 +57,59 @@ handle(Data, Call) ->
 stop(Call, <<"hangup">>) -> cf_exe:hard_stop(Call);
 stop(Call, _) -> cf_exe:stop(Call).
 
--spec maybe_handle_bridge_failure(any(), kapps_call:call()) -> 'ok'.
-maybe_handle_bridge_failure(Reason, Call) ->
+-spec maybe_handle_bridge_failure(kz_json:object(), kapps_call:call(), kz_term:api_ne_binary(), bridge_failure_cause()) -> 'ok'.
+maybe_handle_bridge_failure(_Data, Call, <<"hangup">>, _Reason) ->
+    cf_exe:hard_stop(Call);
+maybe_handle_bridge_failure(Data, Call, AppState, Reason) ->
+    EndpointId = kz_doc:id(Data),
+    maybe_handle_bridge_failure(Data, Call, AppState, Reason, kz_endpoint:get(EndpointId, Call)).
+
+maybe_handle_bridge_failure(_Data, Call, _AppState, Reason, {'error', _E}) ->
+    lager:info("failed to get endpoint for failure cfwd: ~p", [_E]),
+    handle_bridge_failure(Reason, Call);
+maybe_handle_bridge_failure(Data, Call, _AppState, Reason, {'ok', Endpoint}) ->
+    case cf_util:should_call_forward_after_failure(Reason, Endpoint) of
+        {'true', CallForward} ->
+            call_forward_endpoint(Data, Call, Endpoint, CallForward);
+        'false' ->
+            handle_bridge_failure(Reason, Call)
+    end.
+
+call_forward_endpoint(Data, Call, Endpoint, CallForward) ->
+    Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
+    CfwdEndpoint = kz_endpoint:create_call_fwd_endpoint(Endpoint
+                                                       ,Params
+                                                       ,Call
+                                                       ,CallForward
+                                                       ),
+    Timeout = kz_json:get_integer_value(<<"Timeout">>, CfwdEndpoint, get_timeout(Data)),
+
+    Bridge = [{<<"Application-Name">>, <<"bridge">>}
+             ,{<<"Endpoints">>, [CfwdEndpoint]}
+             | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
+             ],
+    kapps_call_command:send_command(Bridge, Call),
+    lager:info("sent bridge to call-forward, waiting ~ps", [Timeout]),
+    case kapps_call_command:b_bridge_wait(Timeout, Call) of
+        {'ok', JObj} ->
+            lager:info("completed successful bridge to call forward"),
+            stop(Call, kz_call_event:channel_answer_state(JObj));
+        {'fail', JObj} ->
+            lager:info("bridge to user failed : ~s / ~s / ~s"
+                      ,[kz_call_event:application_response(JObj)
+                       ,kz_call_event:hangup_cause(JObj)
+                       ,kz_call_event:hangup_code(JObj)
+                       ]
+                      ),
+            cf_exe:continue(Call);
+        {'error', _R} ->
+            lager:info("error bridging to user: ~p", [_R]),
+            cf_exe:continue(Call)
+    end.
+
+-type bridge_failure_cause() :: {'fail', kz_json:object()}.
+
+handle_bridge_failure(Reason, Call) ->
     case cf_util:handle_bridge_failure(Reason, Call) of
         'not_found' -> cf_exe:continue(Call);
         'ok' -> 'ok'
@@ -104,3 +166,6 @@ is_context_flag({K, V}) ->
         'true' -> {'true', K};
         'false' -> 'false'
     end.
+
+get_timeout(Data) ->
+    kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S).

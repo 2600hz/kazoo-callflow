@@ -17,7 +17,9 @@
 
 -include("callflow.hrl").
 
--type endpoint_get_error() :: kz_endpoint:build_errors() | 'endpoint_not_configured' | 'no_endpoints'.
+-type endpoint_get_error() :: kz_endpoint:build_errors() |
+                              'endpoint_not_configured' |
+                              'no_endpoints'.
 
 %%------------------------------------------------------------------------------
 %% @doc Entry point for this module, attempts to call an endpoint as defined
@@ -28,7 +30,8 @@
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
 handle(Data, Call) ->
     UserId = kz_json:get_ne_binary_value(<<"id">>, Data),
-    case get_endpoints(UserId, Data, Call) of
+    Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
+    case kz_endpoint:build(UserId, Params, Call) of
         {'ok', Endpoints} -> bridge(Data, Call, Endpoints);
         {'error', Error} -> handle_error(Call, UserId, Error, should_block_self(Call))
     end.
@@ -40,8 +43,8 @@ handle_error(Call, UserId, 'endpoint_called_self', 'true') ->
 handle_error(Call, UserId, 'owner_called_self', 'true') ->
     lager:warning("owner ~s called self with transfer/cfwd", [UserId]),
     cf_exe:stop(Call, <<"DESTINATION_OUT_OF_ORDER">>);
-handle_error(Call, UserId, Error, _) ->
-    lager:info("error bridging to user ~s : ~s", [UserId, Error]),
+handle_error(Call, UserId, Error, _ShouldBlockSelf) ->
+    lager:info("error getting user ~s endpoints: ~s", [UserId, Error]),
     cf_exe:continue(kz_term:to_upper_binary(Error), Call).
 
 -spec should_block_self(kapps_call:call()) -> boolean().
@@ -49,28 +52,43 @@ should_block_self(Call) ->
     kapps_call:is_call_forward(Call)
         orelse kapps_call:is_transfer(Call).
 
--spec bridge(kz_json:object(), kapps_call:call(), kz_json:objects()) -> 'ok'.
+get_timeout(Data) ->
+    kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S).
+
+get_strategy(Data) ->
+    kz_json:get_ne_binary_value(<<"strategy">>, Data, <<"simultaneous">>).
+
+should_ignore_early_media(<<"simultaneous">>, _Endpoints) -> 'true';
+should_ignore_early_media(_Strategy, Endpoints) ->
+    kz_endpoints:ignore_early_media(Endpoints).
+
+should_fail_on_single_reject(Data, Call) ->
+    Default = kapps_call:custom_channel_var(<<"Require-Fail-On-Single-Reject">>, Call),
+    kz_json:is_true(<<"fail_on_single_reject">>, Data, Default).
+
+-spec bridge(kz_json:object(), kapps_call:call(), [kzd_endpoint:endpoint()]) -> 'ok'.
 bridge(Data, Call0, Endpoints) ->
     Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
 
-    FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, kapps_call:custom_channel_var(<<"Require-Fail-On-Single-Reject">>, Call)),
-    Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
-    Strategy = kz_json:get_ne_binary_value(<<"strategy">>, Data, <<"simultaneous">>),
-    IgnoreEarlyMedia = Strategy =:= <<"simultaneous">>
-        orelse kz_endpoints:ignore_early_media(Endpoints),
+    FailOnSingleReject = should_fail_on_single_reject(Data, Call),
+    Strategy = get_strategy(Data),
+
+    IgnoreEarlyMedia = should_ignore_early_media(Strategy, Endpoints),
     CustomSIPHeaders = kz_json:get_ne_json_value(<<"custom_sip_headers">>, Data),
 
-    lager:info("attempting ~b user devices with strategy ~s", [length(Endpoints), Strategy]),
+    lager:info("dialing user ~s ~p endpoints with strategy ~s"
+              ,[kz_doc:id(Data), length(Endpoints), Strategy]
+              ),
 
     case kapps_call_command:b_bridge(Endpoints
-                                    ,Timeout
-                                    ,Strategy
-                                    ,IgnoreEarlyMedia
-                                    ,'undefined' % Ringback
+                                    ,get_timeout(Data)  % how long to ring endpoints
+                                    ,Strategy           % in what order to ring endpoints
+                                    ,IgnoreEarlyMedia   % whether to ignore early media from endpoints
+                                    ,'undefined'        % Ringback
                                     ,CustomSIPHeaders
-                                    ,<<"false">> % IgnoreForward
-                                    ,FailOnSingleReject
-                                    ,set_context_flags(Call, Data)
+                                    ,<<"false">>        % IgnoreForward
+                                    ,FailOnSingleReject % whether to fail on first endpoint to reject call
+                                    ,set_context_flags(Data, Call)
                                     )
     of
         {'ok', JObj} ->
@@ -83,7 +101,11 @@ bridge(Data, Call0, Endpoints) ->
                        ,kz_call_event:hangup_code(JObj)
                        ]
                       ),
-            maybe_handle_bridge_failure(kz_call_event:channel_answer_state(JObj), Reason, Call);
+            maybe_handle_bridge_failure(Data
+                                       ,Call
+                                       ,kz_call_event:channel_answer_state(JObj)
+                                       ,Reason
+                                       );
         {'error', _R} ->
             lager:info("error bridging to user: ~p", [_R]),
             cf_exe:continue(Call)
@@ -95,38 +117,63 @@ stop(Call, _) -> cf_exe:stop(Call).
 
 -type bridge_failure_cause() :: {'fail', kz_json:object()}.
 
--spec maybe_handle_bridge_failure(kz_term:api_ne_binary(), bridge_failure_cause(), kapps_call:call()) -> 'ok'.
-maybe_handle_bridge_failure(<<"hangup">>, _Reason, Call) ->
+-spec maybe_handle_bridge_failure(kz_json:object(), kapps_call:call(), kz_term:api_ne_binary(), bridge_failure_cause()) -> 'ok'.
+maybe_handle_bridge_failure(_Data, Call, <<"hangup">>, _Reason) ->
     cf_exe:hard_stop(Call);
-maybe_handle_bridge_failure(_, Reason, Call) ->
-    case cf_util:handle_bridge_failure(Reason, Call) of
-        'not_found' -> cf_exe:continue(hangup_cause(Reason), Call);
-        'ok' -> 'ok'
+maybe_handle_bridge_failure(Data, Call, AppState, Reason) ->
+    EndpointId = kz_doc:id(Data),
+    maybe_handle_bridge_failure(Data, Call, AppState, Reason, kz_endpoint:get(EndpointId, Call)).
+
+maybe_handle_bridge_failure(_Data, Call, _AppState, Reason, {'error', _E}) ->
+    lager:info("failed to get endpoint for failure cfwd: ~p", [_E]),
+    handle_bridge_failure(Reason, Call);
+maybe_handle_bridge_failure(Data, Call, _AppState, Reason, {'ok', Endpoint}) ->
+    case cf_util:should_call_forward_after_failure(Reason, Endpoint) of
+        {'true', CallForward} ->
+            call_forward_endpoint(Data, Call, Endpoint, CallForward);
+        'false' ->
+            handle_bridge_failure(Reason, Call)
     end.
 
--spec hangup_cause(bridge_failure_cause()) -> kz_term:ne_binary().
-hangup_cause({'fail', JObj}) ->
-    kz_call_event:hangup_cause(JObj, <<"UNSPECIFIED">>).
-
-%%------------------------------------------------------------------------------
-%% @doc Loop over the provided endpoints for the callflow and build the
-%% json object used in the bridge API
-%% @end
-%%------------------------------------------------------------------------------
--spec get_endpoints(kz_term:api_binary(), kz_json:object(), kapps_call:call()) ->
-          {'ok', [kz_json:object(),...]} |
-          {'error', endpoint_get_error()}.
-get_endpoints('undefined', _, _) ->
-    {'error', 'endpoint_not_configured'};
-get_endpoints(UserId, Data, Call) ->
+call_forward_endpoint(Data, Call, Endpoint, CallForward) ->
     Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
-    case kz_endpoints:by_owner_id(UserId, Params, Call) of
-        [] -> {'error', 'no_endpoints'};
-        {'error', _} = Err -> Err;
-        EPs -> {'ok', EPs}
+    CfwdEndpoint = kz_endpoint:create_call_fwd_endpoint(Endpoint
+                                                       ,Params
+                                                       ,Call
+                                                       ,CallForward
+                                                       ),
+    Timeout = kz_json:get_integer_value(<<"Timeout">>, CfwdEndpoint, get_timeout(Data)),
+
+    Bridge = [{<<"Application-Name">>, <<"bridge">>}
+             ,{<<"Endpoints">>, [CfwdEndpoint]}
+             | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
+             ],
+    kapps_call_command:send_command(Bridge, Call),
+    lager:info("sent bridge to call-forward, waiting ~ps", [Timeout]),
+    case kapps_call_command:b_bridge_wait(Timeout, Call) of
+        {'ok', JObj} ->
+            lager:info("completed successful bridge to call forward"),
+            stop(Call, kz_call_event:channel_answer_state(JObj));
+        {'fail', JObj} ->
+            lager:info("bridge to user failed : ~s / ~s / ~s"
+                      ,[kz_call_event:application_response(JObj)
+                       ,kz_call_event:hangup_cause(JObj)
+                       ,kz_call_event:hangup_code(JObj)
+                       ]
+                      ),
+            cf_exe:continue(Call);
+        {'error', _R} ->
+            lager:info("error bridging to user: ~p", [_R]),
+            cf_exe:continue(Call)
     end.
 
-set_context_flags(Call, Data) ->
+handle_bridge_failure(Reason, Call) ->
+    case cf_util:handle_bridge_failure(Reason, Call) of
+        'not_found' -> cf_exe:continue(Call);
+        'ok' -> lager:info("handled bridge failure, done here")
+    end.
+
+set_context_flags(Data, Call) ->
     Flags = lists:filtermap(fun is_context_flag/1, kz_json:to_proplist(Data)),
     kapps_call:kvs_store('context-flags', Flags, Call).
 
