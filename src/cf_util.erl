@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2022, 2600Hz
+%%% @copyright (C) 2011-2023, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -660,7 +660,9 @@ make_user_channels_query(Req) ->
 handle_user_channels_resp({'ok', ChannelResps}) -> extract_channels(ChannelResps);
 handle_user_channels_resp({'error', _E}) ->
     lager:debug("failed to get channels: ~p", [_E]),
-    [].
+    [];
+handle_user_channels_resp({'timeout', ChannelResps}) ->
+    extract_channels(ChannelResps).
 
 -spec extract_channels(kz_json:objects()) -> kz_json:objects().
 extract_channels(ChannelResps) ->
