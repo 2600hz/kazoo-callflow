@@ -15,6 +15,7 @@ Key | Description | Type | Default | Required | Support Level
 `custom_sip_headers` | KV Object where the name is the SIP header and the value is the SIP field | `object()` |   | `false` |  
 `delay` | How long to delay ringing the device, in seconds | `integer()` | `0` | `false` |  
 `dial_strategy` | Dial strategy for the device | `string('simultaneous' | 'single')` | `simultaneous` | `false` |  
+`fail_on_single_reject` |   | `boolean()` |   | `false` | 
 `id` | Device ID | `string()` |   | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
 `static_invite` | Override the SIP Username | `string()` |   | `false` |  
