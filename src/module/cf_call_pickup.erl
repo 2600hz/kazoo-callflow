@@ -19,8 +19,6 @@
 
 -behaviour(gen_cf_action).
 
--include("callflow.hrl").
-
 -export([handle/2]).
 
 %%------------------------------------------------------------------------------
@@ -28,7 +26,8 @@
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
-handle(Data, Call) ->
+handle(Data, Call0) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
     kapps_call_command:pickup(target_call_id(Data), Call),
     _ = kapps_call_command:wait_for_hangup(),
     cf_exe:stop(Call).
