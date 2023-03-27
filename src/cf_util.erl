@@ -20,7 +20,10 @@
 -export([unsolicited_endpoint_mwi_update/2]).
 -export([alpha_to_dialpad/1]).
 
--export([handle_bridge_failure/2, handle_bridge_failure/3]).
+-export([handle_bridge_failure/2, handle_bridge_failure/3
+        ,get_call_termination_reason/1
+        ,should_call_forward_after_failure/2
+        ]).
 -export([send_default_response/2]).
 
 -export([get_operator_callflow/1, get_operator_callflow/2]).
@@ -408,14 +411,14 @@ get_operator_callflow(Account, OpNum) ->
 %% certain actions, like {@link cf_offnet} and {@link cf_resources}.
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_bridge_failure({'fail', kz_json:object()} | kz_term:api_binary(), kapps_call:call()) ->
+-spec handle_bridge_failure({'fail', kz_json:object()} | kz_term:api_ne_binary(), kapps_call:call()) ->
           'ok' | 'not_found'.
 handle_bridge_failure({'fail', Reason}, Call) ->
     {Response, Cause, Code} = get_call_termination_reason(Reason),
     handle_bridge_failure_codes([Response, Cause, Code], Call);
 handle_bridge_failure('undefined', _) ->
     'not_found';
-handle_bridge_failure(Failure, Call) ->
+handle_bridge_failure(<<Failure/binary>>, Call) ->
     handle_bridge_failure_code(Failure, Call).
 
 -spec handle_bridge_failure(kz_term:api_binary(), kz_term:api_binary(), kapps_call:call()) ->
@@ -448,13 +451,62 @@ handle_bridge_failure_code(Failure, Call) ->
             'not_found'
     end.
 
-
 -spec get_call_termination_reason(kz_json:object()) -> {kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()}.
 get_call_termination_reason(JObj) ->
     {kz_call_event:application_response(JObj, <<"UNSPECIFIED">>)
     ,kz_call_event:hangup_cause(JObj, <<"UNSPECIFIED">>)
     ,kz_call_event:hangup_code(JObj, <<"sip:600">>)
     }.
+
+-spec should_call_forward_after_failure({'fail', kz_json:object()} | kz_term:api_ne_binary(), kzd_endpoint:doc()) ->
+          {'true', kzd_call_forward:doc()} | 'false'.
+should_call_forward_after_failure('undefined', _Endpoint) ->
+    'false';
+should_call_forward_after_failure({'fail', ReasonJObj}, Endpoint) ->
+    {Response, Cause, Code} = get_call_termination_reason(ReasonJObj),
+    should_use_call_forward([Response, Cause, Code], kzd_endpoint:call_forward(Endpoint));
+should_call_forward_after_failure(Failure, Endpoint) ->
+    should_use_call_forward([Failure], Endpoint).
+
+should_use_call_forward([], _Endpoint) ->
+    'false';
+should_use_call_forward(_Fails, 'undefined') ->
+    'false';
+should_use_call_forward([<<"sip:480">> | _Fails], CallForward) ->
+    NoAnswer = no_answer_call_forward(CallForward),
+    use_call_forward_if_enabled(NoAnswer);
+should_use_call_forward([<<"NO_ANSWER">> | _Fails], CallForward) ->
+    NoAnswer = no_answer_call_forward(CallForward),
+    use_call_forward_if_enabled(NoAnswer);
+should_use_call_forward([<<"sip:486">> | _Fails], CallForward) ->
+    Busy = busy_call_forward(CallForward),
+    use_call_forward_if_enabled(Busy);
+should_use_call_forward([<<"USER_BUSY">> | _Fails], CallForward) ->
+    Busy = busy_call_forward(CallForward),
+    use_call_forward_if_enabled(Busy);
+should_use_call_forward([_Fail | Fails], CallForward) ->
+    lager:debug("skipping failure reason ~s", [_Fail]),
+    should_use_call_forward(Fails, CallForward).
+
+use_call_forward_if_enabled(CallForward) ->
+    case kzd_call_forward:enabled(CallForward) of
+        'true' -> {'true', CallForward};
+        'false' -> 'false'
+    end.
+
+no_answer_call_forward(CallForward) ->
+    case kzd_call_forward:no_answer_enabled(CallForward, 'false') of
+        'false' -> kz_json:new();
+        'true' ->
+            kzd_call_forward:merged(CallForward, fun kzd_call_forward:no_answer/1, kz_json:new())
+    end.
+
+busy_call_forward(CallForward) ->
+    case kzd_call_forward:busy_enabled(CallForward, 'false') of
+        'false' -> kz_json:new();
+        'true' ->
+            kzd_call_forward:merged(CallForward, fun kzd_call_forward:busy/1, kz_json:new())
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc Send and wait for a call failure cause response.
