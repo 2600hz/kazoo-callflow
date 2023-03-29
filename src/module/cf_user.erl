@@ -30,6 +30,23 @@
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
 handle(Data, Call) ->
     UserId = kz_json:get_ne_binary_value(<<"id">>, Data),
+    case kz_endpoint:get(UserId, Call) of
+        {'ok', Endpoint} ->
+            handle(Data, Call, Endpoint);
+        {'error', Error} ->
+            handle_error(Call, UserId, Error, should_block_self(Call))
+    end.
+
+handle(Data, Call, Endpoint) ->
+    case kz_endpoint_cfwd:selective(Endpoint, Call) of
+        'undefined' -> build_endpoints(Data, Call);
+        Selective ->
+            Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
+            bridge(Data, Call, [kz_endpoint:create_call_fwd_endpoint(Endpoint, Params, Call, Selective)])
+    end.
+
+build_endpoints(Data, Call) ->
+    UserId = kz_json:get_ne_binary_value(<<"id">>, Data),
     Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
     case kz_endpoint:build(UserId, Params, Call) of
         {'ok', Endpoints} -> bridge(Data, Call, Endpoints);
