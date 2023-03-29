@@ -123,6 +123,20 @@ handle_bridge_failure(Reason, Call) ->
           cf_api_bridge_return().
 bridge_to_endpoints(Data, Call) ->
     EndpointId = kz_json:get_ne_binary_value(<<"id">>, Data),
+    maybe_bridge_to_endpoints(Data, Call, kz_endpoint:get(EndpointId, Call)).
+
+maybe_bridge_to_endpoints(_Data, _Call, {'error', _E}=Error) -> Error;
+maybe_bridge_to_endpoints(Data, Call, {'ok', Endpoint}) ->
+    case kz_endpoint_cfwd:selective(Endpoint, Call) of
+        'undefined' -> bridge_to_built_endpoints(Data, Call);
+        Selective ->
+            lager:info("bridging to selective cfwd settings"),
+            Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
+            bridge_to_endpoints(Data, Call, [kz_endpoint:create_call_fwd_endpoint(Endpoint, Params, Call, Selective)])
+    end.
+
+bridge_to_built_endpoints(Data, Call) ->
+    EndpointId = kz_json:get_ne_binary_value(<<"id">>, Data),
     Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
 
     case kz_endpoint:build(EndpointId, Params, Call) of
