@@ -32,15 +32,24 @@ Key | Description | Type | Default | Required | Support Level
 ## Example Configuration
 
 ```json
-"flow": {
+{
+  "flow": {
     "data": {
-        "action": "prepend",
-        "caller_id_name_prefix": {PREFIX_NAME},
-        "caller_id_number_prefix": {PREFIX_NUMBER},
-        "apply_to": "original"
+      "action": "prepend",
+      "apply_to": "original",
+      "caller_id_name_prefix": "{PREFIX_NAME}",
+      "caller_id_number_prefix": "{PREFIX_NUMBER}"
     },
     "module": "prepend_cid",
-        "children": {
-    }
+    "children": {
+      "_": {
+        "data": {
+          "id": "{USER_ID}"
+        },
+        "module": "user"
+      }
+    },
+
+  }
 }
 ```
