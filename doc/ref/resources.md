@@ -10,7 +10,7 @@ Validator for the resources callflow data object
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`addresses.emergency` |   | `object()` |   | `false` |  
+`addresses.emergency` | Emergency address | `object()` |   | `false` |  
 `addresses` |   | `object()` |   | `false` |  
 `bypass_e164` | Use the original requested number instead of normalizing to E164 | `boolean()` |   | `false` |  
 `caller_id_type` | Which configured caller-id to use (key in the 'caller_id' object) | `string()` | `external` | `false` |  
