@@ -1002,7 +1002,7 @@ maybe_announce_call_is_being_recorded(Call, 'false') ->
 -spec maybe_announce_call_is_being_recorded(kapps_call:call(), boolean(), boolean()) -> 'ok'.
 maybe_announce_call_is_being_recorded(Call, 'true', 'true') ->
     PromptId = <<"general-call_is_being_recorded">>,
-    lager:debug("playing ~s prompt", PromptId),
+    lager:debug("playing ~s prompt", [PromptId]),
     CallId = kapps_call:call_id_direct(Call),
     Prompt = kapps_call:get_prompt(Call, PromptId),
     Commands = [kz_json:from_list([{<<"Application-Name">>, <<"noop">>}
