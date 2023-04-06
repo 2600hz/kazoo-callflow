@@ -26,7 +26,7 @@ Key | Description | Type | Default | Required | Support Level
 `duration_on` | duration, in milliseconds, for the tone to be on | `integer()` |   | `true` |  
 `frequencies` | list of Frequencies to play | `array(integer())` |   | `true` |  
 `repeat` | How many times to loop the tones | `integer()` |   | `false` |  
-`volume` | Volume, in dB. 0 = max, negative = quieter | `integer()` |   | `false` |  
+`volume` | Volume, in dB. 0 = max, negative = quieter | `integer(..0)` |   | `false` |  
 
 
 

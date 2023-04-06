@@ -1,6 +1,6 @@
-## Temporal Route
+# Temporal Route
 
-### About Temporal Route
+## About Temporal Route
 
 Branch the callflow based on the current date and time when compared to the temporal rule(s) associated with the action.
 
@@ -20,22 +20,14 @@ Key | Description | Type | Default | Required | Support Level
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
 `timezone` | Timezone to use when processing temporal rules | `string()` |   | `false` |  
 
-### timezone
-
-The default timezone
-
-
-Key | Description | Type | Default | Required | Support Level
---- | ----------- | ---- | ------- | -------- | -------------
 
 
 
 
 
+## Rule Sets
 
-### Rule Set
-
-To use  a Rule Set in a callflow:
+To use a Rule Set in a callflow:
 
 1. Create your `temporal_route` module and add the `rule_set` field to the data payload. The `rule_set` should be the `ID` of the document.
 2. Set your first children to be the catch all (using `_` for the key).

@@ -12,6 +12,8 @@ Validator for the offnet callflow data object
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
+`addresses.emergency` |   | `object()` |   | `false` |  
+`addresses` |   | `object()` |   | `false` |  
 `bypass_e164` | Use the original requested number instead of normalizing to E164 | `boolean()` |   | `false` |  
 `caller_id_type` | Which configured caller-id to use (key in the 'caller_id' object) | `string()` | `external` | `false` |  
 `custom_sip_headers.in` | Custom SIP Headers to be applied to calls inbound to Kazoo from the endpoint | [#/definitions/custom_sip_headers](#custom_sip_headers) |   | `false` |  
