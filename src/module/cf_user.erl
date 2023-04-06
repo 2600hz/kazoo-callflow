@@ -41,6 +41,7 @@ handle(Data, Call, Endpoint) ->
     case kz_endpoint_cfwd:selective(Endpoint, Call) of
         'undefined' -> build_endpoints(Data, Call);
         Selective ->
+            lager:info("bridging to selective cfwd settings"),
             Params = kz_json:set_value(<<"source">>, kz_term:to_binary(?MODULE), Data),
             bridge(Data, Call, [kz_endpoint:create_call_fwd_endpoint(Endpoint, Params, Call, Selective)])
     end.

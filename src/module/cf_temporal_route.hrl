@@ -40,7 +40,7 @@
 -type interval() :: non_neg_integer().
 -type end_date() :: kz_time:date() | 'undefined'.
 
--record(rule, {id = <<>> :: binary()
+-record(rule, {id = <<>> :: binary() %% doc ID of the temporal_rule
               ,enabled :: kz_term:api_boolean()
               ,name = ?RULE_DEFAULT_NAME :: binary()
               ,cycle = ?RULE_DEFAULT_CYCLE :: cycle_type()
@@ -58,6 +58,10 @@
 -type rule() :: #rule{}.
 -type rules() :: [rule()].
 
+%% {DbID, CallflowChildBranch}
+%% {TemporalRouteID, RuleId} | temporal route
+%% {TemporalRouteSetID, <<"rule_set">>} temporal route set
+%% {TemporalRouteID, RuleSetId} expanded rule set
 -type route() :: {kz_term:ne_binary(), kz_term:ne_binary()}.
 -type routes() :: [route()].
 
