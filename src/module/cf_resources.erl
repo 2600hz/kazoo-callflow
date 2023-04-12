@@ -174,8 +174,45 @@ build_offnet_request(Data, Call) ->
       ,{?KEY_PRIVACY_HIDE_NAME, props:get_value(?KEY_PRIVACY_HIDE_NAME, PrivacyFlags)}
       ,{?KEY_PRIVACY_HIDE_NUMBER, props:get_value(?KEY_PRIVACY_HIDE_NUMBER, PrivacyFlags)}
       ,{?KEY_SIP_DIVERSIONS, diversions(Call)}
+      ,{?KEY_EMERGENCY_ADDRESS, get_emergency_address(Data, Call)}
       | add_headers(Data, Call)
       ]).
+
+%%------------------------------------------------------------------------------
+%% @doc Data object's emergency address takes precedence (if defined) over
+%% endpoint's emergency address.
+%% @end
+%%------------------------------------------------------------------------------
+-spec get_emergency_address(kz_json:object(), kapps_call:call()) -> kz_json:api_object().
+get_emergency_address(Data, Call) ->
+    DataEmergencyAddress = kz_json:get_json_value([<<"addresses">>, <<"emergency">>], Data),
+    case kz_term:is_empty(DataEmergencyAddress) of
+        'true' ->
+            lager:debug("emergency address not found within Data object"),
+            get_emergency_address_from_endpoint(Call);
+        'false' ->
+            lager:debug("found emergency address within Data object, using it"),
+            DataEmergencyAddress
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Device also has its own order of precedence when emergency address
+%% attribute is being merged as part of the endpoint building process.
+%% @end
+%%------------------------------------------------------------------------------
+-spec get_emergency_address_from_endpoint(kapps_call:call()) -> kz_json:api_object().
+get_emergency_address_from_endpoint(Call) ->
+    lager:debug("getting emergency address from endpoint"),
+    {'ok', Endpoint} = kz_endpoint:get(Call),
+    EmergencyAddress = kzd_endpoint:addresses_emergency(Endpoint),
+    case kz_term:is_empty(EmergencyAddress) of
+        'true' ->
+            lager:debug("emergency address not found within Endpoint object"),
+            'undefined';
+        'false' ->
+            lager:debug("found emergency address within Endpoint, using it"),
+            EmergencyAddress
+    end.
 
 -spec add_headers(kz_json:object(), kapps_call:call()) -> kz_term:proplist().
 add_headers(Data, Call) ->
