@@ -162,7 +162,8 @@ channel_is_answered(Channel) ->
     kz_json:is_true(<<"answered">>, Channel).
 
 -spec intercept_call(kz_json:object(), kapps_call:call()) -> 'ok'.
-intercept_call(Channel, Call) ->
+intercept_call(Channel, Call0) ->
+    Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
     UUID = channel_uuid(Channel),
     kapps_call_command:set(kz_json:from_list([{<<?CALL_INTERACTION_ID>>, channel_interaction_id(Channel)}]), Call),
     _ = kapps_call_command:send_command(pickup_cmd(UUID), Call),
