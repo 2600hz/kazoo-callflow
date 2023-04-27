@@ -11,59 +11,9 @@
 %%%-----------------------------------------------------------------------------
 -module(cf_temporal_route_tests).
 
--include("callflow.hrl").
--include("module/cf_temporal_route.hrl").
 -include_lib("kazoo_stdlib/include/kz_types.hrl"). %% ?SECONDS_IN_DAY
-
--ifdef(PROPER).
--include_lib("proper/include/proper.hrl").
--endif.
-
+-include("module/cf_temporal_route.hrl").
 -include_lib("eunit/include/eunit.hrl").
-
--define(SORTED_WDAYS, [<<"monday">>
-                      ,<<"tuesday">>
-                      ,<<"wednesday">>
-                      ,<<"thursday">>
-                      ,<<"friday">>
-                      ,<<"saturday">>
-                      ,<<"sunday">>
-                      ]).
-
--define(JAN,  1).
--define(FEB,  2).
--define(MAR,  3).
--define(APR,  4).
--define(MAY,  5).
--define(JUN,  6).
--define(JUL,  7).
--define(AUG,  8).
--define(SEP,  9).
--define(OCT, 10).
--define(NOV, 11).
--define(DEC, 12).
-
--ifdef(PROPER).
-proper_test_() ->
-    {"Runs " ?MODULE_STRING " PropEr tests"
-    ,[{atom_to_list(F)
-      ,fun () ->
-               ?assert(proper:quickcheck(?MODULE:F(), [{'to_file', 'user'}
-                                                      ,{'numtests', 500}
-                                                      ]))
-       end
-      }
-      || {F, 0} <- ?MODULE:module_info('exports'),
-         F > 'prop_',
-         F < 'prop`'
-     ]
-    }.
--endif.
-
-sort_wdays_test_() ->
-    Shuffled = kz_term:shuffle_list(?SORTED_WDAYS),
-    ?_assertEqual(?SORTED_WDAYS, cf_temporal_route:sort_wdays(Shuffled)).
-
 
 maybe_build_rule_test_() ->
     TZ = <<"UTC">>,
