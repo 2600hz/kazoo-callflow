@@ -18,7 +18,20 @@ update_forwards_test_() ->
                         ,existing='undefined'
                         ,set_enabled=Enabled
                         ,set_number=Number
-                        ,expected=unconditional_cfwd(Enabled, Number)
+                        ,expected=legacy_cfwd(Enabled, Number)
+                        }
+
+               ,#cf_test{title="Toggle legacy cfwd rule enablement"
+                        ,existing=legacy_cfwd(not Enabled, Number)
+                        ,set_enabled=Enabled
+                        ,set_number='undefined'
+                        ,expected=legacy_cfwd(Enabled, Number)
+                        }
+               ,#cf_test{title="Toggle legacy cfwd rule enablement and number"
+                        ,existing=legacy_cfwd(not Enabled, Number)
+                        ,set_enabled=Enabled
+                        ,set_number=UpdateNumber
+                        ,expected=legacy_cfwd(Enabled, UpdateNumber)
                         }
                ,#cf_test{title="No-op on current cfwd version"
                         ,existing=unconditional_cfwd(Enabled, Number)
@@ -47,6 +60,12 @@ unconditional_cfwd(Enabled, Number) ->
               ],
     Cfwd = kz_doc:setters(kz_json:new(), Updates),
     kzd_call_forward_types:set_unconditional(kz_json:new(), Cfwd).
+
+legacy_cfwd(Enabled, Number) ->
+    Updates = [{fun kzd_call_forward:set_enabled/2, Enabled}
+              ,{fun kzd_call_forward:set_number/2, Number}
+              ],
+    kz_doc:setters(kz_json:new(), Updates).
 
 run_it(#cf_test{title=Title
                ,existing=Existing

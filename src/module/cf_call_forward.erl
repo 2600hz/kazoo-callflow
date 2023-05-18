@@ -66,7 +66,7 @@
 -record(callfwd, {keys = #keys{} :: keys()
                  ,doc_id :: kz_term:api_ne_binary()
                  ,enabled = 'false' :: boolean()
-                 ,number = <<>> :: binary()
+                 ,number = 'undefined' :: kz_term:api_binary()
                  ,require_keypress = 'true' :: boolean()
                  ,keep_caller_id = 'true' :: boolean()
                  ,interdigit_timeout = kapps_call_command:default_interdigit_timeout() :: pos_integer()
@@ -317,17 +317,14 @@ update_call_forward('undefined', Enabled, Number) ->
 update_call_forward(CallForwardTypes, Enabled, Number) ->
     case kzd_call_forward_types:unconditional(CallForwardTypes) of
         'undefined' ->
-            kzd_call_forward_types:set_unconditional(CallForwardTypes
-                                                    ,basic_call_forward(Enabled, Number)
-                                                    );
+            lager:info("no unconditional, updating using legacy format"),
+            basic_call_forward(Enabled, Number, CallForwardTypes);
         Unconditional ->
+            lager:info("updating unconditional call forwarding"),
             kzd_call_forward_types:set_unconditional(CallForwardTypes
                                                     ,basic_call_forward(Enabled, Number, Unconditional)
                                                     )
     end.
-
-basic_call_forward(Enabled, Number) ->
-    basic_call_forward(Enabled, Number, kz_json:new()).
 
 basic_call_forward(Enabled, Number, Cfwd) ->
     Updates = [{fun kzd_call_forward:set_enabled/2, Enabled}
