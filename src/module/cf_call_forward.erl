@@ -96,7 +96,7 @@ menu_retries(Data) ->
 handle(Data, Call, CF) ->
     {'ok', _} = kapps_call_command:b_answer(Call),
 
-    CaptureGroup = kapps_call:kvs_fetch('cf_capture_group', <<>>, Call),
+    CaptureGroup = kapps_call:kvs_fetch('cf_capture_group', 'undefined', Call),
 
     CF1 = case kz_json:get_ne_binary_value(<<"action">>, Data) of
               <<"activate">> -> cf_activate(CF, CaptureGroup, Call);       %% Support for NANPA *72
@@ -115,7 +115,7 @@ handle(Data, Call, CF) ->
 %% @doc This function provides a menu with the call forwarding options
 %% @end
 %%------------------------------------------------------------------------------
--spec cf_menu(callfwd(), kz_term:ne_binary(), kapps_call:call()) -> callfwd().
+-spec cf_menu(callfwd(), kz_term:api_binary(), kapps_call:call()) -> callfwd().
 cf_menu(#callfwd{menu_retries=0}, _CaptureGroup, _Call) ->
     lager:info("menu retries exhausted");
 cf_menu(#callfwd{menu_retries=RetriesLeft}=CF, CaptureGroup, Call) ->
@@ -129,8 +129,9 @@ cf_menu(#callfwd{menu_retries=RetriesLeft}=CF, CaptureGroup, Call) ->
             CF1 = cf_update_number(CF, CaptureGroup, Call),
             cf_menu(CF1, CaptureGroup, Call);
         {'error', 'retry'} ->
+            lager:info("retrying (~p left) menu", [RetriesLeft]),
             cf_menu(CF#callfwd{menu_retries=RetriesLeft-1}, CaptureGroup, Call);
-        {'error', _} ->
+        {'error', _E} ->
             CF
     end.
 
@@ -174,20 +175,24 @@ play_menu_prompt(Call, Prompt) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec cf_toggle(callfwd(), kz_term:api_binary(), kapps_call:call()) -> callfwd().
-cf_toggle(#callfwd{enabled='false'
-                  ,number=Number
-                  }=CF
-         ,_Capture
+cf_toggle(#callfwd{enabled='false', number='undefined'}=CF
+         ,CaptureGroup
          ,Call
-         )
-  when is_binary(Number)
-       orelse Number =/= <<>>
-       ->
+         ) ->
+    cf_activate(CF, CaptureGroup, Call);
+cf_toggle(#callfwd{enabled='false', number = <<>>}=CF
+         ,CaptureGroup
+         ,Call
+         ) ->
+    cf_activate(CF, CaptureGroup, Call);
+cf_toggle(#callfwd{enabled='false', number = <<Number/binary>>}=CF
+         ,_CaptureGroup
+         ,Call
+         ) ->
+    lager:info("toggle to enabled, forward to ~s", [Number]),
     play_forwarded_to(Call, Number),
     CF#callfwd{enabled='true'};
-cf_toggle(#callfwd{enabled='false'}=CF, CaptureGroup, Call) ->
-    cf_activate(CF, CaptureGroup, Call);
-cf_toggle(CF, _, Call) ->
+cf_toggle(#callfwd{enabled='true'}=CF, _CaptureGroup, Call) ->
     cf_deactivate(CF, Call).
 
 play_forwarded_to(Call, Number) ->
@@ -204,13 +209,15 @@ play_forwarded_to(Call, Number) ->
 %% document to enable call forwarding
 %% @end
 %%------------------------------------------------------------------------------
--spec cf_activate(callfwd(), binary(), kapps_call:call()) -> callfwd().
-cf_activate(CF1, <<>>, Call) ->
+-spec cf_activate(callfwd(), kz_term:api_binary(), kapps_call:call()) -> callfwd().
+cf_activate(CF, 'undefined', Call) ->
+    cf_activate(CF, <<>>, Call);
+cf_activate(#callfwd{}=CF0, <<>>, Call) ->
     lager:info("no capture group, asking caller"),
-    CF2 = #callfwd{number=Number} = cf_update_number(CF1, <<>>, Call),
+    CF1 = #callfwd{number=Number} = cf_update_number(CF0, <<>>, Call),
     play_forwarded_to(Call, Number),
-    set_active(CF2);
-cf_activate(CF, CaptureGroup, Call) ->
+    set_active(CF1);
+cf_activate(#callfwd{}=CF, <<CaptureGroup/binary>>, Call) ->
     lager:info("activating call forwarding with number ~s", [CaptureGroup]),
     play_forwarded_to(Call, CaptureGroup),
     set_active(set_number(CF, CaptureGroup)).
@@ -221,7 +228,8 @@ set_active(#callfwd{}=CF) -> CF#callfwd{enabled='true'}.
 -spec set_deactive(callfwd()) -> callfwd().
 set_deactive(#callfwd{}=CF) -> CF#callfwd{enabled='false'}.
 
--spec set_number(callfwd(), kz_term:ne_binary()) -> callfwd().
+-spec set_number(callfwd(), kz_term:api_ne_binary()) -> callfwd().
+set_number(#callfwd{}=CF, 'undefined') -> CF;
 set_number(#callfwd{}=CF, <<Number/binary>>) -> CF#callfwd{number=Number}.
 
 -spec toggle_active(callfwd()) -> callfwd().
@@ -243,7 +251,9 @@ cf_deactivate(CF, Call) ->
 %% document with a new number
 %% @end
 %%------------------------------------------------------------------------------
--spec cf_update_number(callfwd(), binary(), kapps_call:call()) -> callfwd().
+-spec cf_update_number(callfwd(), kz_term:api_binary(), kapps_call:call()) -> callfwd().
+cf_update_number(CF, 'undefined', Call) ->
+    cf_update_number(CF, <<>>, Call);
 cf_update_number(CF, <<>>, Call) ->
     Min = ?MIN_CALLFWD_NUMBER_LENGTH,
 
@@ -259,7 +269,7 @@ cf_update_number(CF, <<>>, Call) ->
             lager:debug("error collecting digits: ~p", [_E]),
             exit('normal')
     end;
-cf_update_number(CF, CaptureGroup, _Call) ->
+cf_update_number(CF, <<CaptureGroup/binary>>, _Call) ->
     lager:info("update call forwarding number with '~s'", [CaptureGroup]),
     CF#callfwd{number=CaptureGroup}.
 
