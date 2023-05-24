@@ -203,7 +203,10 @@ get_emergency_address(Data, Call) ->
 -spec get_emergency_address_from_endpoint(kapps_call:call()) -> kz_json:api_object().
 get_emergency_address_from_endpoint(Call) ->
     lager:debug("getting emergency address from endpoint"),
-    {'ok', Endpoint} = kz_endpoint:get(Call),
+    get_emergency_address_from_endpoint(Call, kz_endpoint:get(Call)).
+
+-spec get_emergency_address_from_endpoint(kapps_call:call(), kz_endpoint:std_return()) -> kz_json:api_object().
+get_emergency_address_from_endpoint(_Call, {'ok', Endpoint}) ->
     EmergencyAddress = kzd_endpoint:addresses_emergency(Endpoint),
     case kz_term:is_empty(EmergencyAddress) of
         'true' ->
@@ -212,7 +215,10 @@ get_emergency_address_from_endpoint(Call) ->
         'false' ->
             lager:debug("found emergency address within Endpoint, using it"),
             EmergencyAddress
-    end.
+    end;
+get_emergency_address_from_endpoint(_Call, _Err) ->
+    lager:debug("failed to get endpoint with error: ~p", [_Err]),
+    'undefined'.
 
 -spec add_headers(kz_json:object(), kapps_call:call()) -> kz_term:proplist().
 add_headers(Data, Call) ->
