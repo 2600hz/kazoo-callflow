@@ -507,6 +507,18 @@ handle_cast({'channel_destroyed', JObj}, #state{stop_on_destroy='true'
                                                }=State) ->
     lager:info("recv channel destroyed, going down"),
     {'stop', 'normal', State#state{hangup_info=JObj}};
+handle_cast({'channel_destroyed', JObj}, #state{stop_on_destroy='true'
+                                               ,cf_module_pid={_Pid, _Ref}
+                                               ,call=Call
+                                               }=State) ->
+    case kapps_call:kvs_fetch('cf_last_action', Call) of
+        'cf_doorman' ->
+            lager:info("recv channel destroyed while cf_doorman is active CF module, going down"),
+            {'stop', 'normal', State#state{hangup_info=JObj}};
+        _ ->
+            lager:info("recv channel destroyed, noting but staying up"),
+            {'noreply', State#state{destroyed='true', hangup_info=JObj}}
+    end;
 handle_cast({'channel_destroyed', JObj}, State) ->
     lager:info("recv channel destroyed, noting but staying up"),
     {'noreply', State#state{destroyed='true', hangup_info=JObj}};
