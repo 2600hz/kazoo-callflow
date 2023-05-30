@@ -191,7 +191,7 @@ cf_toggle(#callfwd{enabled='false', number = <<Number/binary>>}=CF
          ) ->
     lager:info("toggle to enabled, forward to ~s", [Number]),
     play_forwarded_to(Call, Number),
-    CF#callfwd{enabled='true'};
+    set_active(CF);
 cf_toggle(#callfwd{enabled='true'}=CF, _CaptureGroup, Call) ->
     cf_deactivate(CF, Call).
 
@@ -212,11 +212,15 @@ play_forwarded_to(Call, Number) ->
 -spec cf_activate(callfwd(), kz_term:api_binary(), kapps_call:call()) -> callfwd().
 cf_activate(CF, 'undefined', Call) ->
     cf_activate(CF, <<>>, Call);
-cf_activate(#callfwd{}=CF0, <<>>, Call) ->
+cf_activate(#callfwd{number='undefined'}=CF0, <<>>, Call) ->
     lager:info("no capture group, asking caller"),
     CF1 = #callfwd{number=Number} = cf_update_number(CF0, <<>>, Call),
     play_forwarded_to(Call, Number),
     set_active(CF1);
+cf_activate(#callfwd{number=Number}=CF, <<>>, Call) ->
+    lager:info("no capture group, number is already ~s, activating", [Number]),
+    play_forwarded_to(Call, Number),
+    set_active(CF);
 cf_activate(#callfwd{}=CF, <<CaptureGroup/binary>>, Call) ->
     lager:info("activating call forwarding with number ~s", [CaptureGroup]),
     play_forwarded_to(Call, CaptureGroup),
@@ -243,7 +247,7 @@ toggle_active(#callfwd{enabled=Enabled}=CF) -> CF#callfwd{enabled=not Enabled}.
 -spec cf_deactivate(callfwd(), kapps_call:call()) -> callfwd().
 cf_deactivate(CF, Call) ->
     lager:info("deactivating call forwarding"),
-    catch({'ok', _} = kapps_call_command:b_prompt(<<"cf-disabled">>, Call)),
+    _ = kapps_call_command:b_prompt(<<"cf-disabled">>, Call),
     set_deactive(CF).
 
 %%------------------------------------------------------------------------------
@@ -259,14 +263,14 @@ cf_update_number(CF, <<>>, Call) ->
 
     case collect_cfwd_number(CF, Call) of
         {'ok', Short} when byte_size(Short) < Min ->
-            lager:debug("too short of input(~p): '~s'", [Min, Short]),
+            lager:info("too short of input(~p): '~s'", [Min, Short]),
             cf_update_number(CF, <<>>, Call);
         {'ok', Number} ->
             _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
             lager:info("update call forwarding number with ~s", [Number]),
             set_number(CF, Number);
         {'error', _E} ->
-            lager:debug("error collecting digits: ~p", [_E]),
+            lager:info("error collecting digits: ~p", [_E]),
             exit('normal')
     end;
 cf_update_number(CF, <<CaptureGroup/binary>>, _Call) ->
@@ -385,7 +389,7 @@ legacy_callfwd(DocId, 'undefined') ->
     lager:info("no call forwarding setup yet"),
     #callfwd{doc_id = DocId
             ,enabled = 'false'
-            ,number = <<>>
+            ,number = 'undefined'
             ,require_keypress = 'true'
             ,keep_caller_id = 'true'
             };
@@ -396,7 +400,7 @@ legacy_callfwd(DocId, CallForwardTypes) ->
         Unconditional ->
             #callfwd{doc_id = DocId
                     ,enabled = kzd_call_forward:enabled(Unconditional)
-                    ,number = kzd_call_forward:number(Unconditional, <<>>)
+                    ,number = kzd_call_forward:number(Unconditional, 'undefined')
                     ,require_keypress = kzd_call_forward:require_keypress(Unconditional, 'true')
                     ,keep_caller_id = kzd_call_forward:keep_caller_id(Unconditional, 'true')
                     }
