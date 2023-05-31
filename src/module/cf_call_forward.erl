@@ -103,10 +103,7 @@ handle(Data, Call, CF) ->
               <<"deactivate">> -> cf_deactivate(CF, Call);                 %% Support for NANPA *73
               <<"update">> -> cf_update_number(CF, CaptureGroup, Call);    %% Support for NANPA *56
               <<"toggle">> -> cf_toggle(CF, CaptureGroup, Call);
-              <<"menu">> -> cf_menu(CF, CaptureGroup, Call);
-              _Action ->
-                  lager:info("improper action in Data: ~p", [_Action]),
-                  'undefined'
+              <<"menu">> -> cf_menu(CF, CaptureGroup, Call)
           end,
     {'ok', _} = update_callfwd(CF1, Call),
     cf_exe:continue(Call).
@@ -175,25 +172,27 @@ play_menu_prompt(Call, Prompt) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec cf_toggle(callfwd(), kz_term:api_binary(), kapps_call:call()) -> callfwd().
+cf_toggle(#callfwd{enabled='true'}=CF, _CaptureGroup, Call) ->
+    lager:info("toggling to disabled"),
+    cf_deactivate(CF, Call);
 cf_toggle(#callfwd{enabled='false', number='undefined'}=CF
          ,CaptureGroup
          ,Call
          ) ->
+    lager:info("toggling to active"),
     cf_activate(CF, CaptureGroup, Call);
 cf_toggle(#callfwd{enabled='false', number = <<>>}=CF
          ,CaptureGroup
          ,Call
          ) ->
+    lager:info("toggling to active"),
     cf_activate(CF, CaptureGroup, Call);
 cf_toggle(#callfwd{enabled='false', number = <<Number/binary>>}=CF
          ,_CaptureGroup
          ,Call
          ) ->
-    lager:info("toggle to enabled, forward to ~s", [Number]),
-    play_forwarded_to(Call, Number),
-    set_active(CF);
-cf_toggle(#callfwd{enabled='true'}=CF, _CaptureGroup, Call) ->
-    cf_deactivate(CF, Call).
+    lager:info("toggle to enabled, forward to existing '~s'", [Number]),
+    cf_activate(CF, <<>>, Call).
 
 play_forwarded_to(Call, Number) ->
     NoopId = kapps_call_command:audio_macro([{'prompt', <<"cf-now_forwarded_to">>}
@@ -213,7 +212,7 @@ play_forwarded_to(Call, Number) ->
 cf_activate(CF, 'undefined', Call) ->
     cf_activate(CF, <<>>, Call);
 cf_activate(#callfwd{number='undefined'}=CF0, <<>>, Call) ->
-    lager:info("no capture group, asking caller"),
+    lager:info("no capture group number and no configured number, asking caller"),
     CF1 = #callfwd{number=Number} = cf_update_number(CF0, <<>>, Call),
     play_forwarded_to(Call, Number),
     set_active(CF1);
@@ -222,7 +221,7 @@ cf_activate(#callfwd{number=Number}=CF, <<>>, Call) ->
     play_forwarded_to(Call, Number),
     set_active(CF);
 cf_activate(#callfwd{}=CF, <<CaptureGroup/binary>>, Call) ->
-    lager:info("activating call forwarding with number ~s", [CaptureGroup]),
+    lager:info("activating call forwarding with captured number '~s'", [CaptureGroup]),
     play_forwarded_to(Call, CaptureGroup),
     set_active(set_number(CF, CaptureGroup)).
 
@@ -259,6 +258,7 @@ cf_deactivate(CF, Call) ->
 cf_update_number(CF, 'undefined', Call) ->
     cf_update_number(CF, <<>>, Call);
 cf_update_number(CF, <<>>, Call) ->
+    lager:info("no capture group, prompting for new call forward number"),
     Min = ?MIN_CALLFWD_NUMBER_LENGTH,
 
     case collect_cfwd_number(CF, Call) of
@@ -267,15 +267,15 @@ cf_update_number(CF, <<>>, Call) ->
             cf_update_number(CF, <<>>, Call);
         {'ok', Number} ->
             _ = kapps_call_command:b_prompt(<<"vm-saved">>, Call),
-            lager:info("update call forwarding number with ~s", [Number]),
+            lager:info("updating call forwarding number with ~s", [Number]),
             set_number(CF, Number);
         {'error', _E} ->
             lager:info("error collecting digits: ~p", [_E]),
             exit('normal')
     end;
 cf_update_number(CF, <<CaptureGroup/binary>>, _Call) ->
-    lager:info("update call forwarding number with '~s'", [CaptureGroup]),
-    CF#callfwd{number=CaptureGroup}.
+    lager:info("update call forwarding number with captured '~s'", [CaptureGroup]),
+    set_number(CF, CaptureGroup).
 
 collect_cfwd_number(#callfwd{interdigit_timeout=Interdigit}, Call) ->
     NoopId = kapps_call_command:prompt(<<"cf-enter_number">>, Call),
@@ -292,35 +292,34 @@ collect_cfwd_number(#callfwd{interdigit_timeout=Interdigit}, Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec update_callfwd(callfwd(), kapps_call:call()) ->
-          {'ok', kz_term:api_object()} |
-          {'error', atom()}.
-update_callfwd('undefined', _Call) -> {'ok', 'undefined'};
+          {'ok', kz_json:object()} |
+          kz_data:data_error().
 update_callfwd(#callfwd{doc_id=Id
                        ,enabled=Enabled
                        ,number=Num
-                       ,require_keypress=_RK
-                       ,keep_caller_id=_KCI
                        }=CF
               ,Call
               ) ->
     lager:info("updating call forwarding settings on ~s / ~s", [kapps_call:account_id(Call), Id]),
-    {'ok', JObj} = kz_datamgr:open_cache_doc(kapps_call:account_id(Call), Id),
+    {'ok', Endpoint} = kz_datamgr:open_cache_doc(kapps_call:account_id(Call), Id),
 
-    UpdatedCallForwards = update_call_forward(kzd_endpoint:call_forward(JObj), Enabled, Num),
+    UpdatedCallForwards = update_call_forward(kzd_endpoint:call_forward(Endpoint), Enabled, Num),
+    lager:info("new forwarding options: ~p", [UpdatedCallForwards]),
 
-    lager:info("new forwarding: ~p", [UpdatedCallForwards]),
     case kz_datamgr:save_doc(kapps_call:account_id(Call)
-                            ,kzd_endpoint:set_call_forward(JObj, UpdatedCallForwards)
+                            ,kzd_endpoint:set_call_forward(Endpoint, UpdatedCallForwards)
                             )
     of
         {'error', 'conflict'} ->
             lager:info("update conflicted, trying again"),
             update_callfwd(CF, Call);
-        {'ok', _JObj1}=OK ->
-            lager:info("updated endpoint call forwarding"),
+        {'ok', _Saved}=OK ->
+            lager:info("updated endpoint ~s (~s) call forwarding"
+                      ,[kz_doc:id(_Saved), kz_doc:revision(_Saved)]
+                      ),
             OK;
-        {'error', R}=E ->
-            lager:info("failed to update call forwarding in db ~w", [R]),
+        {'error', _R}=E ->
+            lager:info("failed to update call forwarding in db ~w", [_R]),
             E
     end.
 
@@ -360,9 +359,15 @@ get_endpoint_id(Call) ->
     AuthorizingId = kapps_call:authorizing_id(Call),
     get_endpoint_id(AuthorizingId, kz_attributes:owner_id(AuthorizingId, Call)).
 
-get_endpoint_id('undefined', 'undefined') -> 'undefined';
-get_endpoint_id(AuthzId, 'undefined') -> AuthzId;
-get_endpoint_id(_AuthzId, OwnerId) -> OwnerId.
+get_endpoint_id('undefined', 'undefined') ->
+    lager:info("no authz or owner id to use"),
+    'undefined';
+get_endpoint_id(AuthzId, 'undefined') ->
+    lager:info("using authz id ~s for endpoint", [AuthzId]),
+    AuthzId;
+get_endpoint_id(_AuthzId, OwnerId) ->
+    lager:info("using owner id ~s for endpoint", [OwnerId]),
+    OwnerId.
 
 -spec maybe_get_call_forward(kapps_call:call(), kz_term:api_ne_binary()) ->
           callfwd() |
@@ -382,26 +387,31 @@ maybe_get_call_forward(Call, EndpointId) ->
 endpoint_to_callfwd(EndpointJObj) ->
     lager:info("loaded endpoint ~s for call forwarding", [kz_doc:id(EndpointJObj)]),
     CallForwardTypes = kzd_endpoint:call_forward(EndpointJObj),
+    lager:info("call forward settings: ~p", [CallForwardTypes]),
 
-    legacy_callfwd(kz_doc:id(EndpointJObj), CallForwardTypes).
+    maybe_legacy_callfwd(kz_doc:id(EndpointJObj), CallForwardTypes).
 
-legacy_callfwd(DocId, 'undefined') ->
+maybe_legacy_callfwd(DocId, 'undefined') ->
     lager:info("no call forwarding setup yet"),
-    #callfwd{doc_id = DocId
-            ,enabled = 'false'
-            ,number = 'undefined'
-            ,require_keypress = 'true'
-            ,keep_caller_id = 'true'
-            };
-legacy_callfwd(DocId, CallForwardTypes) ->
+
+    legacy_callfwd(DocId, kz_json:new());
+maybe_legacy_callfwd(DocId, CallForwardTypes) ->
     case kzd_call_forward_types:unconditional(CallForwardTypes) of
-        'undefined' -> legacy_callfwd(DocId, 'undefined');
+        'undefined' ->
+            lager:info("no unconditional call forwarding configured, loading from legacy settings"),
+            legacy_callfwd(DocId, CallForwardTypes);
         %% if enabled is unset, not legacy
         Unconditional ->
-            #callfwd{doc_id = DocId
-                    ,enabled = kzd_call_forward:enabled(Unconditional)
-                    ,number = kzd_call_forward:number(Unconditional, 'undefined')
-                    ,require_keypress = kzd_call_forward:require_keypress(Unconditional, 'true')
-                    ,keep_caller_id = kzd_call_forward:keep_caller_id(Unconditional, 'true')
-                    }
+            lager:info("loading from unconditional settings"),
+            legacy_callfwd(DocId, Unconditional)
     end.
+
+legacy_callfwd(DocId, CallForward) ->
+    Defaults = kzd_call_forward:new(),
+
+    #callfwd{doc_id = DocId
+            ,enabled = kzd_call_forward:enabled(CallForward, kzd_call_forward:enabled(Defaults))
+            ,number = kzd_call_forward:number(CallForward, kzd_call_forward:number(Defaults, 'undefined'))
+            ,require_keypress = kzd_call_forward:require_keypress(CallForward, kzd_call_forward:require_keypress(Defaults, 'true'))
+            ,keep_caller_id = kzd_call_forward:keep_caller_id(CallForward, kzd_call_forward:keep_caller_id(Defaults, 'true'))
+            }.
