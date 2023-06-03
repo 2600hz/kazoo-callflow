@@ -18,6 +18,7 @@ Key | Description | Type | Default | Required | Support Level
 `group_id` | ID of the group | `string()` |   | `false` |  
 `hard_stop_after_successful_group` | should hard stop on successful bridge | `boolean()` |   | `false` |  
 `id` | Group ID | `string()` |   | `false` |  
+`ignore_early_media` | ignore early media | `boolean()` |   | `false` |  
 `ignore_forward` | Whether to ignore forwarded phones | `boolean()` | `true` | `false` |  
 `repeats` | How many times to repeat dialing the group | `integer()` | `1` | `false` |  
 `ringback` | Ringback to use | `string()` |   | `false` |  
