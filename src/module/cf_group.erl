@@ -70,9 +70,10 @@ attempt_endpoints(JObj, Data, Call0, Endpoints) ->
     Ringback = kz_term:to_binary(
                  kz_json:find(<<"ringback">>, [JObj, Data])
                 ),
+    IgnoreEarlyMedia = kz_json:is_true(<<"ignore_early_media">>, Data, 'undefined'),
     lager:info("attempting group of ~b members with strategy ~s", [length(Endpoints), Strategy]),
     _ = kapps_call_command:b_answer(Call),
-    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, 'true', Ringback, 'undefined', IgnoreForward, Call) of
+    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, IgnoreEarlyMedia, Ringback, 'undefined', IgnoreForward, Call) of
         {'ok', Reply} ->
             lager:info("completed successful bridge to the group - call finished normally"),
             after_success_bridge(Call, kz_call_event:channel_answer_state(Reply), should_hard_stop(Call, Data));
