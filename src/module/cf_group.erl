@@ -73,7 +73,7 @@ attempt_endpoints(JObj, Data, Call0, Endpoints) ->
     IgnoreEarlyMedia = ignore_early_media(Data, Call),
     lager:info("attempting group of ~b members with strategy ~s", [length(Endpoints), Strategy]),
     _ = kapps_call_command:b_answer(Call),
-    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, IgnoreEarlyMedia, Ringback, 'undefined', IgnoreForward, Call) of
+    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, IgnoreEarlyMedia, Ringback, 'undefined', IgnoreForward, set_presence(Data, Call)) of
         {'ok', Reply} ->
             lager:info("completed successful bridge to the group - call finished normally"),
             after_success_bridge(Call, kz_call_event:channel_answer_state(Reply), should_hard_stop(Call, Data));
@@ -165,4 +165,43 @@ ignore_early_media(Data, Call) ->
     case kz_json:is_true(<<"ignore_early_media">>, Data, undefined) of
         undefined -> default_ignore_early_media(Call);
         Value -> Value
+    end.
+
+-spec is_sca_enabled(kz_json:object()) -> boolean().
+is_sca_enabled(Data) ->
+    kz_json:is_true([<<"sca">>, <<"enabled">>], Data).
+
+-spec clean_name(kz_term:ne_binary()) -> kz_term:api_ne_binary().
+clean_name(Name) ->
+    case kz_binary:clean(Name) of
+        <<>> -> undefined;
+        Cleaned -> Cleaned
+    end.
+
+-spec group_name(kz_json:object()) -> kz_term:api_ne_binary().
+group_name(Data) ->
+    case kz_json:get_ne_binary_value(<<"group_name">>, Data) of
+        undefined -> undefined;
+        Name -> clean_name(Name)
+    end.
+
+-spec presence_alias(kz_json:object()) -> kz_term:api_ne_binary().
+presence_alias(Data) ->
+    case group_name(Data) of
+        undefined -> undefined;
+        Name -> list_to_binary(["sca.group.", Name])
+    end.
+
+-spec add_presence_alias(kz_json:object(), kapps_call:call()) -> kapps_call:call().
+add_presence_alias(Data, Call) ->
+    case presence_alias(Data) of
+        undefined -> Call;
+        Alias -> kapps_call:add_presence_alias(Alias, Call)
+    end.
+
+-spec set_presence(kz_json:object(), kapps_call:call()) -> kapps_call:call().
+set_presence(Data, Call) ->
+    case is_sca_enabled(Data) of
+        true -> add_presence_alias(Data, Call);
+        false -> Call
     end.

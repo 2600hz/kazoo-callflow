@@ -16,6 +16,7 @@ Key | Description | Type | Default | Required | Support Level
 `endpoints` | List of endpoint (device/user/group) IDs | `array(string())` | `[]` | `false` |  
 `fail_on_single_reject` | If any leg rejects the call, cancel all other legs | `boolean()` |   | `false` |  
 `group_id` | ID of the group | `string()` |   | `false` |  
+`group_name` | group name | `string()` |   | `false` |  
 `hard_stop_after_successful_group` | should hard stop on successful bridge | `boolean()` |   | `false` |  
 `id` | Group ID | `string()` |   | `false` |  
 `ignore_early_media` | ignore early media | `boolean()` |   | `false` |  
@@ -25,6 +26,8 @@ Key | Description | Type | Default | Required | Support Level
 `ringtones.external` | Ring tone for calls from external sources | `string()` |   | `false` |  
 `ringtones.internal` | Ring tone for calls from external sources | `string()` |   | `false` |  
 `ringtones` |   | `object()` |   | `false` |  
+`sca.enabled` | is sca enabled | `boolean()` |   | `false` |  
+`sca` |   | `object()` |   | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
 `strategy` | How to ring the endpoints | `string('single' | 'simultaneous')` | `simultaneous` | `false` |  
 `timeout` | How long to attempt the group | `integer()` | `20` | `false` |  
