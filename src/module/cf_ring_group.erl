@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2022, 2600Hz
+%%% @copyright (C) 2011-2023, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -117,9 +117,10 @@ attempt_endpoints(Endpoints, Data, Call0) ->
     Strategy = freeswitch_strategy(Data),
     Ringback = kz_json:get_ne_binary_value(<<"ringback">>, Data),
     IgnoreForward = kz_json:get_binary_boolean(<<"ignore_forward">>, Data, <<"true">>),
+    IgnoreEarlyMedia = kz_json:is_true(<<"ignore_early_media">>, Data, 'undefined'),
 
     lager:info("attempting ring group of ~b endpoints with strategy ~s", [length(Endpoints), Strategy]),
-    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, 'true'
+    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, IgnoreEarlyMedia
                                     ,kz_media_util:media_path(Ringback, kapps_call:account_id(Call))
                                     ,'undefined', IgnoreForward, FailOnSingleReject, Call
                                     )
