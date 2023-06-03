@@ -117,7 +117,7 @@ attempt_endpoints(Endpoints, Data, Call0) ->
     Strategy = freeswitch_strategy(Data),
     Ringback = kz_json:get_ne_binary_value(<<"ringback">>, Data),
     IgnoreForward = kz_json:get_binary_boolean(<<"ignore_forward">>, Data, <<"true">>),
-    IgnoreEarlyMedia = kz_json:is_true(<<"ignore_early_media">>, Data, 'undefined'),
+    IgnoreEarlyMedia = ignore_early_media(Data, Call),
 
     lager:info("attempting ring group of ~b endpoints with strategy ~s", [length(Endpoints), Strategy]),
     case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, IgnoreEarlyMedia
@@ -467,3 +467,12 @@ get_member_timeout(MemberJObj) ->
 -spec get_member_timeout(kz_json:object(), timeout_t()) -> timeout_t().
 get_member_timeout(MemberJObj, Default) ->
     kz_json:get_integer_value(<<"timeout">>, MemberJObj, Default).
+
+default_ignore_early_media(Call) ->
+    kz_app_config:get_boolean({?APP, kapps_call:account_id(Call)}, <<"ring_group.ignore_early_media">>, true).
+
+ignore_early_media(Data, Call) ->
+    case kz_json:is_true(<<"ignore_early_media">>, Data, undefined) of
+        undefined -> default_ignore_early_media(Call);
+        Value -> Value
+    end.
