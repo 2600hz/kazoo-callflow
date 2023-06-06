@@ -1,6 +1,6 @@
 # Fax Detect
 
-Fax Detect allows the detection of FAX/VOICE in a call.
+Fax Detect allows the detection of an incoming fax and branches the callflow accordingly.
 
 #### Schema
 
@@ -10,8 +10,11 @@ Validator for the fax_detect callflow data object
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`duration` | How long, in seconds, to try detecting fax tones | `integer()` |   | `false` |
-`skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |
+`duration` | How long, in seconds, to try detecting fax tones | `integer()` |   | `false` |  
+`skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
+
+
+
 
 
 
