@@ -48,3 +48,12 @@ Toggles the call forwarding `enabled` flag on the user (if the calling device is
 #### Menu
 
 The `menu` action provides the caller with a menu from which to choose to toggle if call forwarding is enabled or change the call forwarding number (effectively choosing from actions `toggle` or `update` from above).
+
+
+## Table of scenarios and expected outcomes
+
+| Scenario                                                      | *72 (Activate)                                                               | *73 (Deactivate)              | *74 (Toggle)                                                                | *56 (Update number)                                                     |
+|---------------------------------------------------------------|------------------------------------------------------------------------------|-------------------------------|-----------------------------------------------------------------------------|-------------------------------------------------------------------------|
+| Call forwarding is disabled (or undefined) with no number set | Caller will be prompted to enter the cfwd number and cfwd will be activated  | Call forward remains disabled | Caller will be prompted to enter the cfwd number and cfwd will be activated | Caller will be prompted to enter the cfwd number, cfwd remains disabled |
+| Call forwarding is enabled with a number set                  | Caller will be prompted to enter the new cfwd number, cfwd remains enabled   | Call forward is deactivated   | Call forward is deactivated                                                 | Caller will be prompted to enter the cfwd number, cfwd remains enabled  |
+| Call forwarding is disabled with a number set                 | Caller will be prompted to enter the new cfwd number, cfwd will be activated | Call forward remains disabled | Cfwd is activated, number remains the same                                  | Caller will be prompted to enter the cfwd number, cfwd remains disabled |
