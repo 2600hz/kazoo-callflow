@@ -192,7 +192,8 @@ cf_toggle(#callfwd{enabled='false', number = <<Number/binary>>}=CF
          ,Call
          ) ->
     lager:info("toggle to enabled, forward to existing '~s'", [Number]),
-    cf_activate(CF, <<>>, Call).
+    play_forwarded_to(Call, Number),
+    set_active(CF).
 
 play_forwarded_to(Call, Number) ->
     NoopId = kapps_call_command:audio_macro([{'prompt', <<"cf-now_forwarded_to">>}
@@ -211,7 +212,12 @@ play_forwarded_to(Call, Number) ->
 -spec cf_activate(callfwd(), kz_term:api_binary(), kapps_call:call()) -> callfwd().
 cf_activate(CF, 'undefined', Call) ->
     cf_activate(CF, <<>>, Call);
-cf_activate(#callfwd{number=_OldNumber}=CF0, <<>>, Call) ->
+cf_activate(#callfwd{number='undefined', enabled='false'}=CF0, <<>>, Call) ->
+    lager:info("no capture group, no number configured, asking caller for new"),
+    CF1 = #callfwd{number=Number} = cf_update_number(CF0, <<>>, Call),
+    play_forwarded_to(Call, Number),
+    set_active(CF1);
+cf_activate(#callfwd{number=_OldNumber, enabled='false'}=CF0, <<>>, Call) ->
     lager:info("no capture group, old number '~s' configured, asking caller for new", [_OldNumber]),
     CF1 = #callfwd{number=Number} = cf_update_number(CF0, <<>>, Call),
     play_forwarded_to(Call, Number),
@@ -289,7 +295,7 @@ collect_cfwd_number(#callfwd{interdigit_timeout=Interdigit}, Call) ->
 %%------------------------------------------------------------------------------
 -spec update_callfwd(callfwd(), kapps_call:call()) ->
           {'ok', kz_json:object()} |
-          kz_data:data_error().
+          kz_datamgr:data_error().
 update_callfwd(#callfwd{doc_id=Id
                        ,enabled=Enabled
                        ,number=Num
