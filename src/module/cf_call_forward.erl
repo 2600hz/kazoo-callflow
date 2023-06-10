@@ -212,12 +212,12 @@ play_forwarded_to(Call, Number) ->
 -spec cf_activate(callfwd(), kz_term:api_binary(), kapps_call:call()) -> callfwd().
 cf_activate(CF, 'undefined', Call) ->
     cf_activate(CF, <<>>, Call);
-cf_activate(#callfwd{number='undefined', enabled='false'}=CF0, <<>>, Call) ->
+cf_activate(#callfwd{number='undefined'}=CF0, <<>>, Call) ->
     lager:info("no capture group, no number configured, asking caller for new"),
     CF1 = #callfwd{number=Number} = cf_update_number(CF0, <<>>, Call),
     play_forwarded_to(Call, Number),
     set_active(CF1);
-cf_activate(#callfwd{number=_OldNumber, enabled='false'}=CF0, <<>>, Call) ->
+cf_activate(#callfwd{number=_OldNumber}=CF0, <<>>, Call) ->
     lager:info("no capture group, old number '~s' configured, asking caller for new", [_OldNumber]),
     CF1 = #callfwd{number=Number} = cf_update_number(CF0, <<>>, Call),
     play_forwarded_to(Call, Number),
