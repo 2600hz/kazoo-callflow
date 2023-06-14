@@ -484,6 +484,12 @@ should_use_call_forward([<<"sip:486">> | _Fails], CallForward) ->
 should_use_call_forward([<<"USER_BUSY">> | _Fails], CallForward) ->
     Busy = busy_call_forward(CallForward),
     use_call_forward_if_enabled(Busy);
+should_use_call_forward([<<"sip:603">> | _Fails], CallForward) ->
+    Busy = busy_call_forward(CallForward),
+    use_call_forward_if_enabled(Busy);
+should_use_call_forward([<<"CALL_REJECTED">> | _Fails], CallForward) ->
+    Busy = busy_call_forward(CallForward),
+    use_call_forward_if_enabled(Busy);
 should_use_call_forward([_Fail | Fails], CallForward) ->
     lager:debug("skipping failure reason ~s", [_Fail]),
     should_use_call_forward(Fails, CallForward).
