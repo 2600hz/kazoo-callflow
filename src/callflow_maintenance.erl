@@ -38,6 +38,7 @@
 -export([allow_authz_context/1, allow_authz_context/2
         ,deny_authz_context/1
         ,disable_authz_contexts/0, enable_authz_contexts/0
+        ,is_classifier/1
         ]).
 
 -include("callflow.hrl").
@@ -363,13 +364,8 @@ set_device_classifier_action(Action, Classifier, Uri) ->
 %%------------------------------------------------------------------------------
 -spec is_classifier(kz_term:ne_binary()) -> boolean().
 is_classifier(Classifier) ->
-    Classifiers = kz_json:get_keys(knm_converters:available_classifiers()),
-    case lists:member(Classifier, Classifiers) of
-        'true' -> 'true';
-        'false' ->
-            io:format("classifier '~s' not among configured classifiers: ~p", [Classifier, Classifiers]),
-            'false'
-    end.
+    Classifiers = knm_converters:available_classifiers(),
+    'undefined' =/= kz_json:find_value(<<"name">>, Classifier, Classifiers, 'undefined').
 
 %%------------------------------------------------------------------------------
 %% @doc Lists call restrictions on all levels of an account.

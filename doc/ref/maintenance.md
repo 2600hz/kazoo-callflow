@@ -16,6 +16,7 @@
 | `disable_authz_contexts/0` |  | |
 | `enable_authz_contexts/0` |  | |
 | `flush/0` |  | |
+| `is_classifier/1` | `(Classifier)` | |
 | `list_account_restrictions/1` | `(Account)` | |
 | `lookup_endpoint/1` | `(URI)` | |
 | `lookup_endpoint/2` | `(Username,Realm)` | |
