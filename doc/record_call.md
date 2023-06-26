@@ -15,7 +15,7 @@ Key | Description | Type | Default | Required | Support Level
 `action` | Whether to start or stop the recording | `string('start' | 'stop')` | `start` | `true` |  
 `format` | What format to store the recording on disk | `string('mp3' | 'wav')` |   | `false` |  
 `label` | Label to include in the origin of call recording | `string()` |   | `false` |  
-`media_id` |   | `string()` |   | `false` |  
+`media_id` | Doc ID of the created recording - if unspecified, KAZOO will generate one | `string()` |   | `false` |  
 `media_name` | the name of media | `string()` |   | `false` |  
 `method` | HTTP verb to use when sending the recording to the supplied URL | `string('put' | 'post')` | `put` | `false` |  
 `origin` | How the recording was started - read-only | `string()` |   | `false` |  

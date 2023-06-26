@@ -2,20 +2,23 @@
 %%% @copyright (C) 2010-2023, 2600Hz
 %%% @doc Doorman for a user or device
 %%%
-%%% 1. Have caller record their name and why they're calling (8s limit)
+%%% 1. Have caller record their name
 %%% 2. Originate to callee
 %%% 3. Play prompt + recording for callee
-%%%   a. Press 1, connect caller to callee
-%%%   b. Press 2, connect caller to callee, prompt recording started, start recording
-%%%   c. Press 3, lookup callee's voicemail and send caller to voicemail
-%%%   d. Press 4, reject caller
+%%%   Press 1, connect caller to callee
+%%%   Press 2, lookup callee's voicemail and send caller to voicemail
+%%%   Press 3, reject caller
 %%%
 %%% Data:
-%%%   endpoint_id     | {ID}       | User or device
-%%%   recording_limit |  8s        | Caller's time limit for the recording
-%%%   ringtone        | [ToneJObj] | The ring tone to play to the caller after recording
-%%%   caller_id_name  | "Doorman"  | The caller ID name to be displayed to the callee
-%%%   call_timeout    | 30s        | How long to ring the callee
+%%%   id                | {ID}       | User or device Id
+%%%   recording_limit   |  8s        | Caller's time limit for the recording
+%%%   tones             | [ToneJObj] | The ring tone to play to the caller after recording
+%%%   caller_id_name    | "Doorman"  | The caller ID name to be displayed to the callee
+%%%   call_timeout      | 30s        | How long to ring the callee
+%%%   caller_greeting   | "Hi. Please state your name after the tone." | The greeting to play to the caller
+%%%   failover_strategy | "hangup"   | What to do if the callee doesn't answer or is busy
+%%%   vmbox_id          | {ID}       | The voicemail box to send the caller to if the callee doesn't answer or is busy
+%%%   max_menu_attempts | 3          | How many times to allow the callee to choose from the menu
 %%%
 %%% This Source Code Form is subject to the terms of the Mozilla Public
 %%% License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -32,9 +35,9 @@
 -export([handle/2]).
 
 -define(DTMF_CONNECT_CALL, <<"1">>).
--define(DTMF_CONNECT_RECORD, <<"2">>).
--define(DTMF_VM, <<"3">>).
--define(DTMF_HANGUP, <<"4">>).
+                                                % -define(DTMF_CONNECT_RECORD, <<"2">>).
+-define(DTMF_VM, <<"2">>).
+-define(DTMF_HANGUP, <<"3">>).
 
 -type failure_reason() ::
         'callee_endpoint_fail' |
@@ -67,30 +70,29 @@ handle(Data, Call) ->
                 hangup_caller(CallerCall);
             {'error', 'callee_busy'} ->
                 lager:info("callee is busy"),
-                hangup_caller(CallerCall);
+                handle_failover(Data, CallerCall);
             {'error', 'callee_no_answer'} ->
                 lager:info("callee did not answer"),
-                hangup_caller(CallerCall);
+                handle_failover(Data, CallerCall);
             {'error', 'callee_error'} ->
                 lager:info("callee is unreachable"),
-                hangup_caller(CallerCall);
+                handle_failover(Data, CallerCall);
             {'error', 'callee_hungup'} ->
-                hangup_caller(CallerCall);
+                handle_failover(Data, CallerCall);
             {'error', 'caller_hungup', CalleeCall} ->
                 handle_caller_termination(CallerCall, CalleeCall);
             {'error', 'caller_timeout'} ->
                 lager:info("caller waiting timeout expired"),
                 hangup_caller(CallerCall)
         end,
-    maybe_delete_recording(kapps_call:kvs_fetch('caller_recording_id', CallerCall)),
     cf_exe:continue(Call).
 
 -spec get_caller_recording(kz_json:object(), kapps_call:call()) -> kapps_call:call().
 get_caller_recording(Data, Call) ->
-    prompt_caller(Call),
+    prompt_caller(Data, Call),
     RecordingId = record_caller(Data, Call),
     UpdatedCall = kapps_call:kvs_store('caller_recording_id', RecordingId, Call),
-    thank_caller(Data, UpdatedCall),
+    thank_caller(UpdatedCall),
     UpdatedCall.
 
 -spec record_caller(kz_json:object(), kapps_call:call()) -> kz_term:ne_binary().
@@ -102,14 +104,12 @@ record_caller(Data, Call) ->
                                               ,Call
                                               ),
     case kz_json:get_binary_value(<<"Channel-Answer-State">>, JObj) of
-        <<"answered">> -> RecordingId;
+        <<"answered">> -> <<"/tmp/", RecordingId/binary>>;
         <<"hangup">> ->
             lager:info("caller hung up during message recording"),
-            maybe_delete_recording(RecordingId),
             exit('normal');
         Other ->
             lager:error("unhandled channel answer state: ~p", [Other]),
-            maybe_delete_recording(RecordingId),
             exit('normal')
     end.
 
@@ -119,12 +119,16 @@ recording_limit(Data) ->
     lager:debug("recording limit: ~p", [Limit]),
     kz_math:clamp(16, 2, Limit).
 
-prompt_caller(Call) ->
+prompt_caller(Data, Call) ->
     Beep = kz_json:from_list([{<<"Frequencies">>, [<<"440">>]}
                              ,{<<"Duration-ON">>, <<"500">>}
                              ,{<<"Duration-OFF">>, <<"100">>}
                              ]),
-    AudioMacro = [{'tts', <<"Hi there. Record your name and a short message.">>}
+    Greeting = case kz_json:get_ne_binary_value(<<"caller_greeting">>, Data) of
+                   'undefined' -> {'prompt', <<"cf-doorman_greeting">>};
+                   GreetingText -> {'tts', GreetingText}
+               end,
+    AudioMacro = [Greeting
                  ,{'tones', [Beep]}
                  ],
     NoopId = kapps_call_command:audio_macro(AudioMacro, Call),
@@ -135,13 +139,11 @@ prompt_caller(Call) ->
             exit('normal')
     end.
 
-thank_caller(_Data, Call) ->
-    Text = <<"Thank you.">>,
-    case kapps_call_command:b_tts(Text, Call) of
+thank_caller(Call) ->
+    case kapps_call_command:b_prompt(<<"general-thank_you">>, Call) of
         {'ok', _} -> 'ok';
         {'error', 'channel_hungup'} ->
             lager:debug("caller hung up during doorman's thank message"),
-            maybe_delete_recording(kapps_call:kvs_fetch('caller_recording_id', Call)),
             exit('normal')
     end.
 
@@ -150,7 +152,9 @@ play_ringtone_to_caller(Data, Call) ->
     kapps_call_command:tones(Tones, Call).
 
 tones(Data) ->
-    [kz_json:set_value(<<"repeat">>, 4, Tone)
+                                                % number of repetitions set high enough to make sure that the ringtone
+                                                % is played until the callee eventually answers the call and makes his choice
+    [kz_json:set_value(<<"repeat">>, 600, Tone)
      || Tone <- kz_json:get_list_value(<<"tones">>, Data, [us_tone()])
     ].
 
@@ -162,33 +166,42 @@ us_tone() ->
                       ]).
 
 hangup_caller(Call) ->
-    Text = <<"The party you have dialed could not be reached. Good bye!">>,
     {'ok', _} = kapps_call_command:b_flush(Call),
-    {'ok', _} = kapps_call_command:b_tts(Text, Call),
+    {'ok', _} = kapps_call_command:b_prompt(<<"cf-doorman_unreachable">>, Call),
     'ok' = kapps_call_command:hangup(Call),
     cf_exe:hard_stop(Call).
 
+handle_failover(Data, CallerCall) ->
+    case kz_json:get_ne_binary_value(<<"failover_strategy">>, Data) of
+        <<"hangup">> ->
+            lager:info("failing over to hangup"),
+            hangup_caller(CallerCall);
+        <<"voicemail">> ->
+            lager:info("failing over to voicemail"),
+            case get_vmbox(Data, CallerCall) of
+                'undefined' ->
+                    lager:info("no voicemail box specified, hanging up"),
+                    hangup_caller(CallerCall);
+                VMBoxId ->
+                    lager:info("sending caller to voicemail box ~s", [VMBoxId]),
+                    VMData = kz_json:from_list([{<<"action">>, <<"compose">>}
+                                               ,{<<"id">>, VMBoxId}
+                                               ]),
+                    {'ok', _} = kapps_call_command:b_flush(CallerCall),
+                    cf_voicemail:handle(VMData, CallerCall)
+            end
+    end.
+
 %%     If 1 is pressed the call is connected
-%%     If 2 is pressed the call is connected and both parties hear "This call is being recorded" and the callee also hears "to stop the recording press 5 at any time" when either party hangs up or the callee presses #5 the audio file with the recording is posted to this site https://webhook.site/#!/84f01ee0-1cc6-43f3-afa9-f10639c041f4
-%%     If 3 is pressed the caller is sent to voicemail and link to file is posted to this site https://webhook.site/#!/84f01ee0-1cc6-43f3-afa9-f10639c041f4, Voicemail is also transcribed and the transcription is sent to the forwarding number (one that owns the app)
-%%     If 4 is pressed call is ended
+%%     If 2 is pressed the caller is sent to voicemail
+%%     If 3 is pressed call is ended
 handle_choice(?DTMF_CONNECT_CALL, _Data, CallerCall, CalleeCall) ->
     TargetCallId = kapps_call:call_id(CallerCall),
     lager:info("callee has chosen to accept call ~s", [TargetCallId]),
     pickup_caller(TargetCallId, CalleeCall),
     {'ok', CalleeCall};
-handle_choice(?DTMF_CONNECT_RECORD, Data, CallerCall, CalleeCall) ->
-    TargetCallId = kapps_call:call_id(CallerCall),
-    lager:info("callee has chosen to connect and record the call ~s", [TargetCallId]),
-
-    RecordData = kz_json:set_values([{<<"origin">>, <<"callflow : " ?MODULE_STRING>>}]
-                                   ,Data
-                                   ),
-    UpdatedCallerCall = cf_record_call:handle(RecordData, CallerCall, <<"start">>),
-    _ = cf_exe:update_call(UpdatedCallerCall),
-    pickup_caller(TargetCallId, CalleeCall);
 handle_choice(?DTMF_VM, Data, CallerCall, CalleeCall) ->
-    VMBoxId = kz_json:get_ne_binary_value(<<"vmbox_id">>, Data),
+    VMBoxId = get_vmbox(Data, CalleeCall),
     lager:info("callee has chosen to send caller to voicemail box ~s", [VMBoxId]),
 
     kapps_call_command:hangup(CalleeCall),
@@ -196,22 +209,51 @@ handle_choice(?DTMF_VM, Data, CallerCall, CalleeCall) ->
     VMData = kz_json:from_list([{<<"action">>, <<"compose">>}
                                ,{<<"id">>, VMBoxId}
                                ]),
-    cf_voicemail:handle(VMData, CallerCall).
+    {'ok', _} = kapps_call_command:b_flush(CallerCall),
+    cf_voicemail:handle(VMData, CallerCall);
+handle_choice(?DTMF_HANGUP, _Data, CallerCall, _CalleeCall) ->
+    lager:info("callee has chosen to reject incoming call ~s", [kapps_call:call_id(CallerCall)]),
+    hangup_caller(CallerCall).
 
--spec maybe_delete_recording(binary() | 'undefined') -> 'ok'.
-maybe_delete_recording('undefined') -> 'ok';
-maybe_delete_recording(RecordingId) ->
-    RecordingFile = filename:join("/tmp", RecordingId),
-    _ = file:delete(RecordingFile),
-    'ok'.
+get_vmbox(Data, Call) ->
+    case kz_json:get_ne_binary_value(<<"vmbox_id">>, Data) of
+        'undefined' ->
+            AccountId = kapps_call:account_id(Call),
+            OwnerId = kz_doc:id(Data),
+            lager:debug("no vmbox_id specified in callflow data, trying to find vmbox for ~p", [OwnerId]),
+            {'ok', Doc} = kz_datamgr:open_cache_doc(AccountId, OwnerId),
+            case kz_doc:type(Doc) of
+                <<"user">> ->
+                    get_vmbox_from_user(AccountId, OwnerId);
+                <<"device">> ->
+                    get_vmbox_from_device(AccountId, Doc)
+            end;
+        VMBoxId -> VMBoxId
+    end.
 
--spec wait_for_calee(kz_term:pid_ref(), 'undefined' | kapps_call:call(), kapps_call:call(), timeout()) -> contact_callee_return().
-wait_for_calee({CalleePid, CalleeRef}=CalleeProc, CalleeCall, CallerCall, Timeout) ->
-    Start = kz_time:start_time(),
+get_vmbox_from_device(AccountId, Device) ->
+    UserId = kzd_devices:owner_id(Device),
+    get_vmbox_from_user(AccountId, UserId).
+
+get_vmbox_from_user(AccountId, OwnerId) ->
+    case kz_datamgr:get_results(AccountId
+                               ,<<"attributes/owned">>
+                               ,[{'key', [OwnerId, <<"vmbox">>]}])
+    of
+        {'ok', [JObj]} ->
+            lager:debug("found vmbox owned by user: ~s", [OwnerId]),
+            kz_json:get_value(<<"id">>, JObj);
+        {'error', _R} ->
+            lager:debug("unable to fetch vmbox: ~p", [_R]),
+            'undefined'
+    end.
+
+-spec wait_for_calee(kz_term:pid_ref(), 'undefined' | kapps_call:call(), kapps_call:call()) -> contact_callee_return().
+wait_for_calee({CalleePid, CalleeRef}=CalleeProc, CalleeCall, CallerCall) ->
     receive
         {_Pid, 'update_callee', UpdatedCalleeCall} ->
             lager:debug("callee call updated: ~p", [kapps_call:to_json(UpdatedCalleeCall)]),
-            wait_for_calee(CalleeProc, UpdatedCalleeCall, CallerCall, kz_time:decr_timeout(Timeout, Start));
+            wait_for_calee(CalleeProc, UpdatedCalleeCall, CallerCall);
         {CalleePid, CalleeResponse} ->
             erlang:demonitor(CalleeRef, ['flush']),
             CalleeResponse;
@@ -232,13 +274,11 @@ wait_for_calee({CalleePid, CalleeRef}=CalleeProc, CalleeCall, CallerCall, Timeou
                     {'error', 'caller_hungup', CalleeCall};
                 {_Evt, _CallId} ->
                     lager:debug("ignoring event: ~p", [JObj]),
-                    wait_for_calee(CalleeProc, CalleeCall, CallerCall, kz_time:decr_timeout(Timeout, Start))
+                    wait_for_calee(CalleeProc, CalleeCall, CallerCall)
             end;
         _Other ->
             lager:debug("ignoring event: ~p", [_Other]),
-            wait_for_calee(CalleeProc, CalleeCall, CallerCall, kz_time:decr_timeout(Timeout, Start))
-    after
-        Timeout -> {'error', 'caller_timeout'}
+            wait_for_calee(CalleeProc, CalleeCall, CallerCall)
     end.
 
 -spec contact_callee(kz_json:object(), kapps_call:call()) -> contact_callee_return().
@@ -250,7 +290,7 @@ contact_callee(Data, Call) ->
         {'ok', Endpoints} ->
             contact_callee(Data, Call, Endpoints);
         {'error', _E} ->
-            lager:error("failed to build endpoint for ~p", [EndpointId]),
+            lager:error("failed to build endpoint for ~p with error ~p", [EndpointId, _E]),
             {'error', 'callee_endpoint_fail'}
     end.
 
@@ -259,21 +299,22 @@ contact_callee(Data, CallerCall, Endpoints) ->
     AMQPConsumer = kz_amqp_channel:consumer_pid(),
     AMQPChannel = kz_amqp_channel:consumer_channel(),
     CalleeProc = kz_process:spawn_monitor(fun contact_callee/6, [Data, CallerCall, Endpoints, self(), AMQPConsumer, AMQPChannel]),
-    wait_for_calee(CalleeProc, 'undefined', CallerCall, 60 * ?MILLISECONDS_IN_SECOND).
+    wait_for_calee(CalleeProc, 'undefined', CallerCall).
 
 contact_callee(Data, CallerCall, Endpoints, DoormanProc, AMQPConsumer, AMQPChannel) ->
     _ = kz_amqp_channel:consumer_channel(AMQPChannel),
     _ = kz_amqp_channel:consumer_pid(AMQPConsumer),
 
     CalleeCall = create_callee_call(Data, CallerCall, Endpoints),
-    Request = build_originate_request(Data, CalleeCall, Endpoints, kapps_call:call_id(CallerCall)),
+    Request = build_originate_request(Data, CalleeCall, Endpoints, CallerCall),
     Validator = fun(Resp) -> validate_originate_resp(Resp, CalleeCall, DoormanProc) end,
+    lager:info("originate callee call on: ~s", [kz_json:get_ne_binary_value(<<"Switch-Nodename">>, Request)]),
 
     _ = case kz_amqp_worker:call_collect(
                Request
               ,fun kapi_resource:publish_originate_req/1
               ,Validator
-              ,30 * ?MILLISECONDS_IN_SECOND)
+              ,300 * ?MILLISECONDS_IN_SECOND)
         of
             {'ok', [OriginateResp|_]} ->
                 case kz_json:get_value(<<"Event-Category">>, OriginateResp) of
@@ -282,9 +323,9 @@ contact_callee(Data, CallerCall, Endpoints, DoormanProc, AMQPConsumer, AMQPChann
                         UpdatedCallee = kapps_call:from_originate_resp(OriginateResp, CalleeCall),
                         DoormanProc ! {self(), 'update_callee', UpdatedCallee},
                         update_logging_id(CallerCall, UpdatedCallee),
-                        kz_events:bind_call_id(kapps_call:call_id(CalleeCall)),
+                        kz_events:bind_call_id(kapps_call:call_id(UpdatedCallee)),
                         Resp = doorman_menu(UpdatedCallee),
-                        kz_events:unbind_call_id(kapps_call:call_id(CalleeCall)),
+                        kz_events:unbind_call_id(kapps_call:call_id(UpdatedCallee)),
                         DoormanProc ! {self(), Resp};
                     <<"error">> ->
                         case kz_json:get_value(<<"Error-Message">>, OriginateResp) of
@@ -350,63 +391,105 @@ validate_originate_resp(_Event, Resp, _CalleeCall, _DoormanProc) ->
 
 -spec doorman_menu(kapps_call:call()) -> doorman_menu_return().
 doorman_menu(CalleeCall) ->
-    NoopId = doorman_menu_prompt(CalleeCall),
-    lager:info("waiting for callee to choose from menu"),
-
-    CalleeResponse = kapps_call_command:collect_digits(1
-                                                      ,kapps_call_command:default_collect_timeout()
-                                                      ,2 * ?MILLISECONDS_IN_SECOND
-                                                      ,NoopId
-                                                      ,CalleeCall
-                                                      ),
-    case CalleeResponse of
+    case doorman_prompt(CalleeCall) of
         {'ok', <<>>} ->
             lager:info("doorman menu timeout expired, callee didn't make choice, going to hangup"),
             kapps_call_command:hangup(CalleeCall),
             {'error', 'callee_hungup'};
-        {'ok', ?DTMF_CONNECT_CALL=Choice} -> {'ok', Choice, CalleeCall};
-        {'ok', ?DTMF_CONNECT_RECORD=Choice} -> {'ok', Choice, CalleeCall};
-        {'ok', ?DTMF_VM=Choice} -> {'ok', Choice, CalleeCall};
-        {'ok', ?DTMF_HANGUP=Choice} ->
-            lager:info("callee has selected not to take the call (pressed ~p)", [Choice]),
+        {'ok', ?DTMF_HANGUP} ->
             kapps_call_command:hangup(CalleeCall),
-            {'error', 'callee_hungup'};
-        {'ok', BadChoice} ->
-            bad_choice(BadChoice, CalleeCall),
-            doorman_menu(CalleeCall);
+            {'ok', ?DTMF_HANGUP, CalleeCall};
+        {'ok', Option} -> {'ok', Option, CalleeCall};
         {'error', 'channel_hungup'} ->
-            lager:info("callee hungup without making choice"),
+            lager:info("callee hungup during doorman prompt"),
+            {'error', 'callee_hungup'};
+        {'error', 'callee_hungup_max_attempts'} ->
+            lager:info("callee has reached max number of attempts to chose from the menu, going to hangup"),
+            kapps_call_command:hangup(CalleeCall),
             {'error', 'callee_hungup'};
         {'error', _E} ->
             lager:error("error waiting for callee to choose: ~p", [_E]),
             {'error', 'callee_error'}
     end.
 
--spec doorman_menu_prompt(kapps_call:call()) -> kz_term:ne_binary().
-doorman_menu_prompt(CalleeCall) ->
-    lager:info("playing doorman menu to callee"),
-    AudioMacro = [{'tts', <<"Call from">>}
-                 ,{'play', kapps_call:kvs_fetch('caller_recording_id', CalleeCall), ?ANY_DIGIT, <<"both">> }
-                 ,{'tts', <<"Press 1 to answer">>}
-                 ,{'tts', <<"Press 2 to answer with recording enabled">>}
-                 ,{'tts', <<"Press 3 to send the call to voicemail">>}
-                 ,{'tts', <<"Press 4 to reject or simply hangup">>}
-                 ],
-    kapps_call_command:audio_macro(AudioMacro, CalleeCall).
+-spec doorman_prompt(kapps_call:call()) ->
+          {'error', 'channel_hungup' | 'callee_hungup_max_attempts' | kz_json:object()} |
+          {'ok', binary()}.
+doorman_prompt(CalleeCall) ->
+    lager:info("introducing caller to callee"),
+    CallerIntro = [{'tts', <<"Call from">>}
+                  ,{'play', kapps_call:kvs_fetch('caller_recording_id', CalleeCall), [<<"#">>], <<"both">> }
+                  ],
+    NoopId = kapps_call_command:audio_macro(CallerIntro, CalleeCall),
+    case cf_util:wait_for_noop(CalleeCall, NoopId) of
+        {'ok', _} -> doorman_options(CalleeCall, 0);
+        {'error', _} = R -> R
+    end.
 
-bad_choice(BadChoice, CalleeCall) ->
-    lager:info("callee has selected option which doesn't exist - (pressed ~p)", [BadChoice]),
-    Text = <<"Wrong option, try again please.">>,
-    case kapps_call_command:b_tts(Text, CalleeCall) of
-        {'ok', _} -> 'ok';
-        {'error', 'channel_hungup'} ->
-            lager:debug("callee hung up during doorman prompt message"),
-            exit('normal');
-        {'error', _E} -> lager:error("error playing tts: ~p", [_E])
+doorman_options(CalleeCall, Counter) ->
+    lager:info("playing doorman options to callee"),
+    Options = erlang:iolist_to_binary(["Press ", ?DTMF_CONNECT_CALL, " to answer. ",
+                                                %    "Press ", ?DTMF_CONNECT_RECORD, " to answer with recording enabled. ",
+                                       "Press ", ?DTMF_VM, " to send call to voicemail. ",
+                                       "Press ", ?DTMF_HANGUP, " to reject."
+                                      ]),
+
+    NoopId = kapps_call_command:tts(Options, CalleeCall),
+    Choice = kapps_call_command:collect_digits(1
+                                              ,kapps_call_command:default_collect_timeout()
+                                              ,2 * ?MILLISECONDS_IN_SECOND
+                                              ,NoopId
+                                              ,CalleeCall
+                                              ),
+    case Choice of
+        {'ok', ?DTMF_CONNECT_CALL} ->
+            callee_announcement(CalleeCall);
+        {'ok', Option} = R when Option =:= ?DTMF_VM; Option =:= ?DTMF_HANGUP -> R;
+        {'ok', BadChoice} ->
+            bad_choice(BadChoice, CalleeCall, Counter + 1);
+        R -> R
+    end.
+
+callee_announcement(CalleeCall) ->
+    Beep = kz_json:from_list([{<<"Frequencies">>, [<<"440">>]}
+                             ,{<<"Duration-ON">>, <<"500">>}
+                             ,{<<"Duration-OFF">>, <<"100">>}
+                             ]),
+                                                % Announcement = kz_json:get_ne_binary_value(<<"callee_announcement">>, Data, <<"Your call is being connected.">>),
+    Announcement = <<"Your call is being connected.">>,
+
+    AudioMacro = [{'tts', Announcement}
+                 ,{'tones', [Beep]}
+                 ],
+    NoopId = kapps_call_command:audio_macro(AudioMacro, CalleeCall),
+    case kapps_call_command:wait_for_noop(CalleeCall, NoopId) of
+        {'ok', _} -> {'ok', ?DTMF_CONNECT_CALL};
+        {'error', 'channel_hungup'} = R ->
+            lager:debug("callee hung up during callee announcement"),
+            R
+    end.
+
+bad_choice(BadChoice, CalleeCall, Counter) ->
+    MaxAttempts = kapps_call:kvs_fetch('max_menu_attempts', CalleeCall),
+    case Counter < MaxAttempts of
+        'true' ->
+            lager:info("callee has selected option which doesn't exist - (pressed ~p)", [BadChoice]),
+            Text = <<"Wrong option, please, try again.">>,
+            case kapps_call_command:b_tts(Text, CalleeCall) of
+                {'ok', _} -> doorman_options(CalleeCall, Counter);
+                {'error', 'channel_hungup'} = R -> R;
+                {'error', _E} ->
+                    lager:error("error playing tts: ~p", [_E]),
+                    exit('normal')
+            end;
+        'false' ->
+            Text = <<"Wrong option, Good bye.">>,
+            _ = kapps_call_command:b_tts(Text, CalleeCall),
+            {'error', 'callee_hungup_max_attempts'}
     end.
 
 pickup_caller(TargetCallId, CalleeCall) ->
-    kapps_call_command:pickup(TargetCallId, CalleeCall).
+    kapps_call_command:connect_leg(TargetCallId, CalleeCall).
 
 -spec update_logging_id(kapps_call:call(), kapps_call:call()) -> any().
 update_logging_id(CallerCall, CalleeCall) ->
@@ -416,14 +499,13 @@ update_logging_id(CallerCall, CalleeCall) ->
                              ]),
     kz_log:put_callid(LogId).
 
-build_originate_request(Data, CalleeCall, Endpoints, _CallerCallId) ->
+build_originate_request(Data, CalleeCall, Endpoints, CallerCall) ->
     CCVs = [{<<"Account-ID">>, kapps_call:account_id(CalleeCall)}
            ,{<<"Inherit-Codec">>, <<"false">>}
            ,{<<"Authorizing-Type">>, kapps_call:authorizing_type(CalleeCall)}
            ,{<<"Authorizing-ID">>, kapps_call:authorizing_id(CalleeCall)}
            ],
     MsgId = kz_binary:rand_hex(16),
-    CallId = kapps_call:call_id_direct(CalleeCall),
     CallTimeoutS = kz_json:get_integer_value(<<"call_timeout">>, Data, 30),
 
     kz_json:from_list(
@@ -442,9 +524,9 @@ build_originate_request(Data, CalleeCall, Endpoints, _CallerCallId) ->
                                           ]}
       ,{<<"Ignore-Early-Media">>, 'true'}
       ,{<<"Originate-Immediate">>, 'false'}
+      ,{<<"Switch-Nodename">>, kapps_call:switch_nodename(CallerCall)}
       ,{<<"Media">>, <<"process">>}
       ,{<<"Msg-ID">>, MsgId}
-      ,{<<"Outbound-Call-ID">>, CallId}
       ,{<<"Outbound-Caller-ID-Name">>, kapps_call:caller_id_name(CalleeCall)}
       ,{<<"Outbound-Caller-ID-Number">>, kapps_call:caller_id_number(CalleeCall)}
       ,{<<"Timeout">>, CallTimeoutS}
@@ -457,32 +539,26 @@ create_callee_call(Data, CallerCall, Endpoints) ->
     Routines = [{fun kapps_call:set_account_db/2, kapps_call:account_db(CallerCall)}
                ,{fun kapps_call:set_account_id/2, kapps_call:account_id(CallerCall)}
                ,{fun kapps_call:set_authorizing_id/2, kz_json:find(<<"Endpoint-ID">>, Endpoints)}
-               ,{fun kapps_call:set_call_id/2, iolist_to_binary([kz_binary:rand_hex(16), "-doorman"])}
                ,{fun kapps_call:set_caller_id_name/2, kz_json:get_ne_binary_value(<<"caller_id_name">>, Data, <<"Doorman">>)}
                ,{fun kapps_call:set_caller_id_number/2, kapps_call:caller_id_number(CallerCall)}
                ,{fun kapps_call:set_custom_channel_var/3, <<"Retain-CID">>, <<"true">>}
                ,{fun kapps_call:set_resource_type/2, <<"audio">>}
                ,{fun kapps_call:kvs_store/3, 'caller_recording_id', kapps_call:kvs_fetch('caller_recording_id', CallerCall)}
+               ,{fun kapps_call:kvs_store/3, 'max_menu_attempts', kz_json:get_integer_value(<<"max_menu_attempts">>, Data, 3)}
                ],
     kapps_call:exec(Routines, kapps_call:new()).
 
 -spec handle_caller_termination(kapps_call:call(), kapps_call:call()) -> 'ok'.
 handle_caller_termination(CallerCall, CalleeCall) ->
-    lager:info("premature termination of Caller (A-leg) ~s prior to bridge", [kapps_call:call_id_direct(CallerCall)]),
-    case kapps_call_command:b_channel_status(CalleeCall) of
-        {'ok', JObj} ->
-            case kz_json:get_boolean_value(<<"Answered">>, JObj) of
-                'true' ->
-                    lager:debug("callee (B-leg) ~s has already answered. Terminating it.", [kapps_call:call_id_direct(CalleeCall)]),
-                    kapps_call_command:hangup(CalleeCall);
-                'false' ->
-                    lager:debug("callee (B-leg) ~s has not answered yet. Canceling it.", [kapps_call:call_id_direct(CalleeCall)]),
-                    cancel_callee_call(CalleeCall)
-            end;
-        {'error','not_found'} ->
-            lager:debug("callee (B-leg) ~s was not found. Already terminated", [kapps_call:call_id_direct(CalleeCall)]);
-        {'error', _Else} ->
-            lager:error("cannot obtain Callee channel status and terminate the call: ~p", [_Else])
+    lager:info("premature termination of caller (A-leg) ~s prior to bridge", [kapps_call:call_id_direct(CallerCall)]),
+
+    case kapps_call:call_id(CalleeCall) of
+        'undefined' ->
+            lager:debug("callee (B-leg) was not answered yet. Cancelling originate request"),
+            cancel_callee_call(CalleeCall);
+        CalleeCallID ->
+            lager:debug("callee (B-leg) ~s has already answered. Terminating it.", [CalleeCallID]),
+            kapps_call_command:hangup(CalleeCall)
     end,
     'ok'.
 
@@ -490,4 +566,4 @@ cancel_callee_call(CalleeCall) ->
     Payload = [{<<"Originate-UUID">>, kapps_call:kvs_fetch(<<"Originate-UUID">>, CalleeCall)}
               | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
               ],
-    kapi_dialplan:publish_originate_cancel(kapps_call:kvs_fetch(<<"Originate-Queue">>, CalleeCall),  Payload).
+    kapi_dialplan:publish_originate_cancel(kapps_call:kvs_fetch(<<"Originate-Queue">>, CalleeCall), Payload).

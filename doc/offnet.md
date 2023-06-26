@@ -6,13 +6,13 @@ Deprecated; use [Resources](./resources.md) instead.
 
 #### Schema
 
-Validator for the offnet callflow data object
+Validator for the deprecated offnet callflow data object
 
 
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`addresses.emergency` |   | `object()` |   | `false` |  
+`addresses.emergency` | Emergency address to use for PIDF+LO if the carrier supports it | `object()` |   | `false` |  
 `addresses` |   | `object()` |   | `false` |  
 `bypass_e164` | Use the original requested number instead of normalizing to E164 | `boolean()` |   | `false` |  
 `caller_id_type` | Which configured caller-id to use (key in the 'caller_id' object) | `string()` | `external` | `false` |  
