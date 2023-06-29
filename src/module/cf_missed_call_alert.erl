@@ -116,6 +116,8 @@ send_missed_alert(Call, Notify, Emails) ->
               ,{<<"Call-Bridged">>, kapps_call:call_bridged(Call)}
               ,{<<"Message-Left">>, kapps_call:message_left(Call)}
               ,{<<"To">>, Emails}
+              ,{<<"Authorizing-Type">>, kapps_call:authorizing_type(Call)}
+              ,{<<"Authorizing-ID">>, kapps_call:authorizing_id(Call)}
               | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
               ]
              ),
