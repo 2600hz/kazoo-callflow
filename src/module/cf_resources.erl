@@ -173,7 +173,7 @@ build_offnet_request(Data, Call) ->
       ,{?KEY_PRIVACY_METHOD, props:get_value(?KEY_PRIVACY_METHOD, PrivacyFlags)}
       ,{?KEY_PRIVACY_HIDE_NAME, props:get_value(?KEY_PRIVACY_HIDE_NAME, PrivacyFlags)}
       ,{?KEY_PRIVACY_HIDE_NUMBER, props:get_value(?KEY_PRIVACY_HIDE_NUMBER, PrivacyFlags)}
-      ,{?KEY_SIP_DIVERSIONS, diversions(Call)}
+      ,{?KEY_SIP_DIVERSIONS, kapps_call:bridge_diversions(Call)}
       | add_headers(Data, Call)
       ]).
 
@@ -461,43 +461,6 @@ maybe_emit_account_id(JObj, Data, Call) ->
         'true' ->
             kz_json:set_value(<<"X-Account-ID">>, kapps_call:account_id(Call), JObj)
     end.
-
-diversions(Call) ->
-    case should_add_diversion_header(Call) of
-        'true' -> add_diversion(Call);
-        'false' -> kapps_call:diversions(Call)
-    end.
-
-diversion(Call) ->
-    Number = diversion_number(Call),
-    Reason = diversion_reason(Call),
-    list_to_binary(["<sip:", Number, "@", kapps_call:account_realm(Call), ">", ";reason=", Reason]).
-
-diversion_number(Call) ->
-    kapps_call:custom_channel_var(<<"Call-Forward-Number">>, Call).
-
-diversion_reason(Call) ->
-    kapps_call:custom_channel_var(<<"Call-Forward-Reason">>, <<"unconditional">>, Call).
-
--spec add_diversion(kapps_call:call()) -> kz_term:api_ne_binaries().
-add_diversion(Call) ->
-    add_diversion(kapps_call:diversions(Call), diversion(Call)).
-
--spec add_diversion(kz_term:api_ne_binaries(), kz_term:ne_binary()) ->
-          kz_term:api_ne_binaries().
-add_diversion('undefined', Diversion) ->
-    lager:debug("setting diversion as ~s", [Diversion]),
-    [Diversion];
-add_diversion(Diversions, Diversion) ->
-    lager:debug("add diversion as ~s", [Diversion]),
-    [Diversion | Diversions].
-
--spec should_add_diversion_header(kapps_call:call()) -> boolean().
-should_add_diversion_header(Call) ->
-    kapps_call:is_call_forward(Call)
-        andalso kz_term:is_not_empty(diversion_number(Call))
-        andalso kz_term:is_true(kapps_call:custom_channel_var(<<"Retain-CID">>, 'false', Call))
-        andalso kapps_config:get_is_true(<<"kazoo_endpoint">>, <<"should_add_diversion_header">>, 'false').
 
 -spec get_ignore_early_media(kz_json:object()) -> kz_term:api_binary().
 get_ignore_early_media(Data) ->
