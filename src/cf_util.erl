@@ -458,7 +458,7 @@ get_call_termination_reason(JObj) ->
     ,kz_call_event:hangup_code(JObj, <<"sip:600">>)
     }.
 
--spec should_call_forward_after_failure({'fail', kz_json:object()} | kz_term:api_ne_binary(), kzd_endpoint:doc()) ->
+-spec should_call_forward_after_failure({'fail', kz_json:object()} | kz_term:api_ne_binary(), kzd_endpoint:endpoint()) ->
           {'true', kzd_call_forward:doc()} | 'false'.
 should_call_forward_after_failure('undefined', _Endpoint) ->
     'false';

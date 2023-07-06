@@ -183,7 +183,7 @@ build_offnet_request(Data, Call) ->
 %% endpoint's emergency address.
 %% @end
 %%------------------------------------------------------------------------------
--spec get_emergency_address(kz_json:object(), kapps_call:call()) -> kz_json:api_object().
+-spec get_emergency_address(kz_json:object(), kapps_call:call()) -> kz_term:api_object().
 get_emergency_address(Data, Call) ->
     DataEmergencyAddress = kz_json:get_json_value([<<"addresses">>, <<"emergency">>], Data),
     case kz_term:is_empty(DataEmergencyAddress) of
@@ -199,12 +199,12 @@ get_emergency_address(Data, Call) ->
 %% attribute is being merged as part of the endpoint building process.
 %% @end
 %%------------------------------------------------------------------------------
--spec get_emergency_address_from_endpoint(kapps_call:call()) -> kz_json:api_object().
+-spec get_emergency_address_from_endpoint(kapps_call:call()) -> kz_term:api_object().
 get_emergency_address_from_endpoint(Call) ->
     lager:debug("getting emergency address from endpoint"),
     get_emergency_address_from_endpoint(Call, kz_endpoint:get(Call)).
 
--spec get_emergency_address_from_endpoint(kapps_call:call(), kz_endpoint:std_return()) -> kz_json:api_object().
+-spec get_emergency_address_from_endpoint(kapps_call:call(), kz_endpoint:std_return()) -> kz_term:api_object().
 get_emergency_address_from_endpoint(_Call, {'ok', Endpoint}) ->
     EmergencyAddress = kzd_endpoint:addresses_emergency(Endpoint),
     case kz_term:is_empty(EmergencyAddress) of
