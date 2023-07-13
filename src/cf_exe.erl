@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2022, 2600Hz
+%%% @copyright (C) 2010-2023, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -654,7 +654,7 @@ handle_event(JObj, #state{cf_module_pid=PidRef
         {{<<"call_event">>, <<"CHANNEL_DISCONNECTED">>}, CallId} ->
             handle_channel_destroyed(Self, Notify, JObj);
         {{<<"call_event">>, <<"CHANNEL_TRANSFEREE">>}, _} ->
-            handle_channel_transfer(Call, JObj);
+            handle_channel_transferee(Call, JObj);
         {{<<"call_event">>, <<"CHANNEL_REPLACED">>}, _} ->
             handle_channel_replaced(Call, JObj, Notify);
         {{<<"call_event">>, <<"CHANNEL_DIRECT">>}, _} ->
@@ -926,12 +926,16 @@ log_transferor(undefined) ->
 log_transferor(To) ->
     lager:info("this callflow executor is transfering to ~s, terminate immediately", [To]).
 
--spec handle_channel_transfer(kapps_call:call(), kz_call_event:payload()) -> 'ok'.
-handle_channel_transfer(Call, CallEvent) ->
+-spec handle_channel_transferee(kapps_call:call(), kz_call_event:payload()) -> 'ok'.
+handle_channel_transferee(Call, CallEvent) ->
     OrgFetchId = kapps_call:custom_channel_var(<<"Fetch-ID">>, Call),
     NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
     case OrgFetchId =:= NewFetchId of
-        'true'  -> transfer(Call);
+        'true'  ->
+            case kz_term:is_true(kz_call_event:transfer_is_semi_attended(CallEvent)) of
+                true -> lager:debug("channel transferee but transfer was from originating leg, ignoring");
+                false -> transfer(Call)
+            end;
         'false' -> 'ok'
     end.
 
@@ -941,9 +945,14 @@ handle_channel_replaced(Call, CallEvent, Notify) ->
     NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
     case OrgFetchId =:= NewFetchId of
         'true' ->
-            ReplacedBy = kz_call_event:replaced_by(CallEvent),
-            callid_update(ReplacedBy, Call),
-            relay_message(Notify, CallEvent);
+            case kz_term:is_true(kz_call_event:transfer_is_semi_attended(CallEvent)) of
+                true ->
+                    lager:debug("channel replaced but transfer was from originating leg, ignoring");
+                false ->
+                    ReplacedBy = kz_call_event:replaced_by(CallEvent),
+                    callid_update(ReplacedBy, Call),
+                    relay_message(Notify, CallEvent)
+            end;
         'false' -> 'ok'
     end.
 
