@@ -123,6 +123,9 @@ menu_handle_digits(#cf_menu_data{retries=Retries
             menu_handle_record(Menu, Call);
         'false' ->
             lager:info("invalid selection ~w", [Digits]),
+            cf_exe:set_call(
+              kapps_call:set_dtmf_collection(Digits, "Menu", Call)
+             ),
             _ = play_invalid_prompt(Menu, Call),
             menu_loop(Menu#cf_menu_data{retries=Retries - 1}, Call)
     end.
