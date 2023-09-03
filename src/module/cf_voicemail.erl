@@ -939,7 +939,7 @@ message_envelope(Message, #mailbox{timezone=Timezone, envelope_type = <<"caller_
     ,{'prompt', ?PROMPT_RECEIVED}
     ,{'prompt', <<"vm-a_call_from">>}
     ,{'say', CallerId}
-    ,{'prompt', <<"vm-at">>}
+    ,{'prompt', <<"vm-on">>}
     ,{'say', get_unix_epoch(kz_json:get_integer_value(?MSG_KEY_TIMESTAMP, Message), Timezone), <<"current_date_time">>}
     ];
 
