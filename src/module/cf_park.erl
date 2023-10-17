@@ -124,11 +124,19 @@ handle_nomatch_with_empty_referred_to(Data, Call, PresenceType, ParkedCalls, Slo
 
 -spec maybe_record_call(kapps_call:call()) -> kapps_call:call().
 maybe_record_call(Call) ->
-    AccountId = kapps_call:account_id(Call),
     %% Using kzd_devices:fetch/2 here instead of kz_endpoint:get/1 because the latter adds default
     %% values when endpoint's call_recording is not configured and in this case that scenario needs
     %% to be handle different.
-    {'ok', Endpoint} = kzd_devices:fetch(AccountId, kapps_call:authorizing_id(Call)),
+    do_maybe_record_call(Call
+                        ,kzd_devices:fetch(kapps_call:account_id(Call)
+                                          ,kapps_call:authorizing_id(Call)
+                                          )
+                        ).
+
+-spec do_maybe_record_call(kapps_call:call(), {'ok', kzd_devices:doc()} | {'error', any()}) ->
+          kapps_call:call().
+do_maybe_record_call(Call, {'ok', Endpoint}) ->
+    AccountId = kapps_call:account_id(Call),
     {'ok', User} = case kapps_call:owner_id(Call) of
                        'undefined' -> {'ok', kz_json:new()}; %% Unassigned device.
                        OwnerId -> kzd_users:fetch(AccountId, OwnerId)
@@ -144,7 +152,11 @@ maybe_record_call(Call) ->
         'false' ->
             lager:debug("not recording this time"),
             Call
-    end.
+    end;
+do_maybe_record_call(Call, {'error', _}=_Err) ->
+    %% Known to happen with commland when retrieving parked call.
+    lager:debug("not recording this time. Failed to fetch auth endpoint: ~p", [_Err]),
+    Call.
 
 %%------------------------------------------------------------------------------
 %% @doc This function adds debugging information that will later be used within
