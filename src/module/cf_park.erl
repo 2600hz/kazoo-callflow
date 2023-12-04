@@ -332,6 +332,7 @@ pickup_event(_Call, {<<"error">>, <<"dialplan">>}, _Evt) ->
 pickup_event(_Call, {<<"call_event">>,<<"CHANNEL_BRIDGE">>}, _Evt) ->
     'ok' = lager:debug("channel bridged to ~s", [kz_call_event:other_leg_call_id(_Evt)]);
 pickup_event(Call, _Type, _Evt) ->
+    lager:debug("pickup event not handled : ~p", [_Type]),
     wait_for_pickup(Call).
 
 %%------------------------------------------------------------------------------
@@ -425,16 +426,33 @@ create_slot(ParkerCallId, PresenceType, SlotNumber, Data, Attended, Call) ->
 slot_presence_id(SlotNumber, Data, Call) ->
     case kz_json:is_true(<<"custom_presence_id">>, Data, 'false') of
         'true' -> maybe_custom_slot_presence_id(SlotNumber, Data, Call);
-        'false' -> slot_presence_id(SlotNumber, Call)
+        'false' -> slot_presence_user(SlotNumber, Data, Call)
     end.
 
--spec slot_presence_id(kz_term:ne_binary(), kapps_call:call()) -> kz_term:ne_binary().
-slot_presence_id(SlotNumber, Call) ->
+-spec slot_presence_user(kz_term:ne_binary(), kz_json:object(), kapps_call:call()) -> kz_term:ne_binary().
+slot_presence_user(SlotNumber, Data, Call) ->
+    PresenceUser = slot_presence_user(SlotNumber, Call),
+    case should_force_presence_user(Data, Call) of
+        true -> force_presence_user(PresenceUser);
+        false -> PresenceUser
+    end.
+
+-spec slot_presence_user(kz_term:ne_binary(), kapps_call:call()) -> kz_term:ne_binary().
+slot_presence_user(SlotNumber, Call) ->
     User = kapps_call:request_user(Call),
     case kapps_call:kvs_fetch('cf_capture_group', <<>>, Call) of
         _ = ?NE_BINARY -> User;
         _Other -> <<User/binary, SlotNumber/binary>>
     end.
+
+should_force_presence_user(Data, Call) ->
+    kz_app_config:is_true({?APP, kapps_call:account_id(Call)}, <<"park.force_presence_user">>, true)
+        orelse kz_json:is_true(<<"force_presence_user">>, Data).
+
+force_presence_user(<<"*3", _/binary>> = User) -> User;
+force_presence_user(<<"*4", SlotId/binary>>) -> <<"*3", SlotId/binary>>;
+force_presence_user(<<"*", _Key, SlotId/binary>>) -> <<"*3", SlotId/binary>>;
+force_presence_user(SlotId) -> <<"*3", SlotId/binary>>.
 
 -spec maybe_custom_slot_presence_id(kz_term:ne_binary(), kz_json:object(), kapps_call:call()) -> kz_term:ne_binary().
 maybe_custom_slot_presence_id(SlotNumber, Data, Call) ->
