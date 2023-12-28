@@ -194,6 +194,7 @@ send_route_response(RouteReq, Call, Flow, NoMatch) ->
              ,{<<"Transfer-Media">>, get_transfer_media(Flow, RouteReq)}
              ,{<<"Ringback-Media">>, get_ringback_media(Flow, RouteReq)}
              ,{<<"Pre-Park">>, pre_park_action(Call)}
+             ,{<<"Ignore-Progress">>, ignore_progress(Flow, Call)}
              ,{<<"From-Realm">>, kzd_accounts:fetch_realm(AccountId)}
              ,{<<"Custom-Channel-Vars">>, ccvs(Flow)}
              ,{<<"Context">>, kapps_call:context(Call)}
@@ -248,6 +249,14 @@ pre_park_action(Call) ->
         'false' -> <<"none">>;
         'true' -> <<"ring_ready">>
     end.
+
+-spec ignore_progress(kapps_call:call()) -> kz_term:api_boolean().
+ignore_progress(Call) ->
+    kz_app_config:get_boolean({?APP, kapps_call:account_id(Call)}, <<"route_resp.ignore_progress">>, undefined).
+
+-spec ignore_progress(kzd_callflows:doc(), kapps_call:call()) -> kz_term:api_boolean().
+ignore_progress(Flow, Call) ->
+    kzd_callflows:ignore_progress(Flow, ignore_progress(Call)).
 
 %%------------------------------------------------------------------------------
 %% @doc process
