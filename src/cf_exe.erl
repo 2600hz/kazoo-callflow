@@ -867,11 +867,11 @@ cf_module_task(CFModule, Data, Call, AMQPConsumer, AMQPChannel) ->
 
         'exit':'normal' ->
             lager:info("action ~s finished", [CFModule]);
-        ?STACKTRACE(_E, R, ST)
-        lager:info("action ~s died unexpectedly (~s): ~p", [CFModule, _E, R]),
-        kz_log:log_stacktrace(ST),
-        throw(R)
-        end.
+        _E:R:ST ->
+            lager:info("action ~s died unexpectedly (~s): ~p", [CFModule, _E, R]),
+            kz_log:log_stacktrace(ST),
+            throw(R)
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc Unlike the kapps_call_command this send command does not call the
