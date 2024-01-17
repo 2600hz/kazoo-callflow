@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2023, 2600Hz
+%%% @copyright (C) 2010-2024, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -958,11 +958,7 @@ handle_channel_transferee(Call, CallEvent) ->
     OrgFetchId = kapps_call:custom_channel_var(<<"Fetch-ID">>, Call),
     NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
     case OrgFetchId =:= NewFetchId of
-        'true'  ->
-            case kz_term:is_true(kz_call_event:transfer_is_semi_attended(CallEvent)) of
-                true -> lager:debug("channel transferee but transfer was from originating leg, ignoring");
-                false -> transfer(Call)
-            end;
+        'true'  -> transfer(Call);
         'false' -> 'ok'
     end.
 
@@ -972,14 +968,9 @@ handle_channel_replaced(Call, CallEvent, Notify) ->
     NewFetchId = kz_call_event:custom_channel_var(CallEvent, <<"Fetch-ID">>),
     case OrgFetchId =:= NewFetchId of
         'true' ->
-            case kz_term:is_true(kz_call_event:transfer_is_semi_attended(CallEvent)) of
-                true ->
-                    lager:debug("channel replaced but transfer was from originating leg, ignoring");
-                false ->
-                    ReplacedBy = kz_call_event:replaced_by(CallEvent),
-                    callid_update(ReplacedBy, Call),
-                    relay_message(Notify, CallEvent)
-            end;
+            ReplacedBy = kz_call_event:replaced_by(CallEvent),
+            callid_update(ReplacedBy, Call),
+            relay_message(Notify, CallEvent);
         'false' -> 'ok'
     end.
 
