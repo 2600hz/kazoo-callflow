@@ -183,14 +183,18 @@ add_debug_info(RecJObj, Doc) ->
 %%   If it is enabled, then record the call. Same logic for user up to account.
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_record_call(kz_json:objects(), kapps_call:call()) -> 'false'| {'true', kz_term:object()}.
+-spec maybe_record_call(kz_json:objects(), kapps_call:call()) ->
+          'false' |
+          {'true', kz_json:object()}.
 maybe_record_call(RecJObjs, Call) ->
     InceptionType = kapps_call:inception_type(Call),
     AnyKey = [<<"any">>, InceptionType], %% any
     DirKey = [kapps_call:direction(Call), InceptionType], %% inbound, outbound
     maybe_record_call(RecJObjs, AnyKey, DirKey).
 
--spec maybe_record_call(kz_json:objects(), kz_json:path(), kz_json:path()) -> 'false'| {'true', kz_term:object()}.
+-spec maybe_record_call(kz_json:objects(), kz_json:path(), kz_json:path()) ->
+          'false' |
+          {'true', kz_json:object()}.
 maybe_record_call([], _AnyKey, _DirKey) ->
     lager:debug("none of the provided objects have call_recording configured"),
     'false';
@@ -202,11 +206,11 @@ maybe_record_call([RecJObj | RecJObjs], AnyKey, DirKey) ->
             lager:debug("call recording not configured for ~s ~s", [DocType, DocId]),
             maybe_record_call(RecJObjs, AnyKey, DirKey);
         RecordingSettings ->
-            Enabled = kz_json:is_true(<<"enabled">>, RecordingSettings),
-            lager:debug("is call recording enabled for ~s ~s?: ~p", [DocType, DocId, Enabled]),
-            case Enabled of
-                'true' -> {'true', RecordingSettings};
-                _-> 'false'
+            case kz_json:is_true(<<"enabled">>, RecordingSettings) of
+                'false' -> 'false';
+                'true' ->
+                    lager:info("call recording is enabled from doc ~s: ~s", [DocType, DocId]),
+                    {'true', RecordingSettings}
             end
     end.
 
