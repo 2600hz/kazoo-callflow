@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2024, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -146,9 +146,9 @@ do_maybe_record_call(Call, {'ok', Endpoint}) ->
     UserRec = add_debug_info(kzd_users:call_recording(User, kz_json:new()), User),
     AccountRec = add_debug_info(kzd_accounts:call_recording_account(Account, kz_json:new()), Account),
     case maybe_record_call([EndpointRec, UserRec, AccountRec], Call) of
-        'true' ->
+        {'true', Data} ->
             lager:debug("recording because device, user, or account is configured to record calls"),
-            kapps_call:start_recording(Call);
+            kapps_call:start_recording(Data, Call);
         'false' ->
             lager:debug("not recording this time"),
             Call
@@ -183,32 +183,39 @@ add_debug_info(RecJObj, Doc) ->
 %%   If it is enabled, then record the call. Same logic for user up to account.
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_record_call(kz_json:objects(), kapps_call:call()) -> boolean().
+-spec maybe_record_call(kz_json:objects(), kapps_call:call()) ->
+          'false' |
+          {'true', kz_json:object()}.
 maybe_record_call(RecJObjs, Call) ->
     InceptionType = kapps_call:inception_type(Call),
-    AnyKey = [<<"any">>, InceptionType, <<"enabled">>], %% any
-    DirKey = [kapps_call:direction(Call), InceptionType, <<"enabled">>], %% inbound, outbound
+    AnyKey = [<<"any">>, InceptionType], %% any
+    DirKey = [kapps_call:direction(Call), InceptionType], %% inbound, outbound
     maybe_record_call(RecJObjs, AnyKey, DirKey).
 
--spec maybe_record_call(kz_json:objects(), kz_json:path(), kz_json:path()) -> boolean().
+-spec maybe_record_call(kz_json:objects(), kz_json:path(), kz_json:path()) ->
+          'false' |
+          {'true', kz_json:object()}.
 maybe_record_call([], _AnyKey, _DirKey) ->
     lager:debug("none of the provided objects have call_recording configured"),
     'false';
 maybe_record_call([RecJObj | RecJObjs], AnyKey, DirKey) ->
     DocType = kz_doc:type(RecJObj),
     DocId = kz_doc:id(RecJObj),
-    case is_recording_enabled(AnyKey, DirKey, RecJObj) of
+    case get_recording_settings(AnyKey, DirKey, RecJObj) of
         'undefined' ->
             lager:debug("call recording not configured for ~s ~s", [DocType, DocId]),
             maybe_record_call(RecJObjs, AnyKey, DirKey);
-        MaybeEnabled ->
-            Ret = kz_term:is_true(MaybeEnabled),
-            lager:debug("is call recording enabled for ~s ~s?: ~p", [DocType, DocId, Ret]),
-            Ret
+        RecordingSettings ->
+            case kz_json:is_true(<<"enabled">>, RecordingSettings) of
+                'false' -> 'false';
+                'true' ->
+                    lager:info("call recording is enabled from doc ~s: ~s", [DocType, DocId]),
+                    {'true', RecordingSettings}
+            end
     end.
 
--spec is_recording_enabled(kz_json:path(), kz_json:path(), kz_json:object()) -> kz_term:api_boolean().
-is_recording_enabled(AnyKey, DirKey, RecJObj) ->
+-spec get_recording_settings(kz_json:path(), kz_json:path(), kz_json:object()) -> kz_term:api_object().
+get_recording_settings(AnyKey, DirKey, RecJObj) ->
     kz_json:get_first_defined([AnyKey, DirKey], RecJObj).
 
 -spec direct_park(kz_term:ne_binary(), kz_json:object(), kz_json:object(), kz_json:object(), kapps_call:call()) -> 'ok'.
@@ -433,8 +440,8 @@ slot_presence_id(SlotNumber, Data, Call) ->
 slot_presence_user(SlotNumber, Data, Call) ->
     PresenceUser = slot_presence_user(SlotNumber, Call),
     case should_force_presence_user(Data, Call) of
-        true -> force_presence_user(PresenceUser);
-        false -> PresenceUser
+        'true' -> force_presence_user(PresenceUser);
+        'false' -> PresenceUser
     end.
 
 -spec slot_presence_user(kz_term:ne_binary(), kapps_call:call()) -> kz_term:ne_binary().
@@ -446,7 +453,7 @@ slot_presence_user(SlotNumber, Call) ->
     end.
 
 should_force_presence_user(Data, Call) ->
-    kz_app_config:is_true({?APP, kapps_call:account_id(Call)}, <<"park.force_presence_user">>, true)
+    kz_app_config:is_true({?APP, kapps_call:account_id(Call)}, <<"park.force_presence_user">>, 'true')
         orelse kz_json:is_true(<<"force_presence_user">>, Data).
 
 force_presence_user(<<"*3", _/binary>> = User) -> User;
@@ -1117,7 +1124,7 @@ wait_for_bridge(Call) ->
 -spec ringback_endpoint_id(kapps_call:call()) -> kz_term:api_binary().
 ringback_endpoint_id(Call) ->
     case kapps_call:restricted_endpoint_id(Call) of
-        undefined ->
+        'undefined' ->
             kapps_call:authorizing_id(Call);
         EndpointId ->
             lager:debug("call was referred by endpoint id  => ~s / ~s", [kapps_call:account_id(Call), EndpointId]),
