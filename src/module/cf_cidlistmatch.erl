@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2024, 2600Hz
 %%% @doc Handles inspection of incoming caller ID and branching to a child
 %%% callflow node accordingly.
 %%%
@@ -55,31 +55,39 @@ handle(Data, Call) ->
 is_matching_prefix(AccountDb, ListId, Number) ->
     NumberPrefixes = build_keys(Number),
     Keys = [[ListId, X] || X <- NumberPrefixes],
-    case kz_datamgr:get_results(AccountDb, <<"lists/match_prefix_in_list">>, [{'keys', Keys}]) of
-        {'ok', [_ | _]} -> 'true';
-        _ -> 'false'
+    case kz_datamgr:get_results(AccountDb, <<"contacts/match_prefix_in_list">>, [{'keys', Keys}]) of
+        {'ok', [_ | _]} ->
+            lager:debug("found matching prefix"),
+            'true';
+        _ ->
+            lager:debug("unable to find matching prefix"),
+            'false'
     end.
 
 -spec is_matching_regexp(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> boolean().
 is_matching_regexp(AccountDb, ListId, Number) ->
-    case kz_datamgr:get_results(AccountDb, <<"lists/regexps_in_list">>, [{'key', ListId}]) of
-        {'ok', Regexps} ->
-            Patterns = [kz_json:get_value(<<"value">>, X)
-                        || X <- Regexps,
-                           X =/= 'null'
-                       ],
-            match_regexps(Patterns, Number);
+    case kz_datamgr:get_results(AccountDb, <<"contacts/regexps_in_list">>, [{'key', ListId}]) of
+        {'ok', [Entry]} ->
+            Doc = kz_json:get_json_value(<<"value">>, Entry),
+            Regexp = kz_json:get_ne_binary_value(<<"regexp">>, Doc),
+            lager:debug("regexp ~s in match list ~s",[Regexp, ListId]),
+            match_regexp(Regexp, Number);
         _ ->
             'false'
     end.
 
--spec match_regexps(kz_term:binaries(), kz_term:ne_binary()) -> boolean().
-match_regexps([Pattern | Rest], Number) ->
+-spec match_regexp(kz_term:api_ne_binary(), kz_term:ne_binary()) -> boolean().
+match_regexp('undefined', _Number) ->
+    'false';
+match_regexp(Pattern, Number) ->
     case re:run(Number, Pattern) of
-        {'match', _} -> 'true';
-        'nomatch' -> match_regexps(Rest, Number)
-    end;
-match_regexps([], _Number) -> 'false'.
+        {'match', _} ->
+            lager:debug("found matching regexp ~s for caller id ~s",[Pattern, Number]),
+            'true';
+        'nomatch' ->
+            lager:debug("unable to find matching regexp for caller id ~s",[Number]),
+            'false'
+    end.
 
 %% TODO: this function from hon_util, may be place it somewhere in library?
 -spec build_keys(binary()) -> kz_term:binaries().

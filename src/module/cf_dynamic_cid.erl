@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2024, 2600Hz
 %%% @doc Allow the user to change their Caller ID based on the action.
 %%%
 %%% <h4>Data options:</h4>
@@ -372,7 +372,7 @@ get_caller_id_from_entries(_Call, 'undefined', _KeyDest) ->
     lager:warning("list id is missing"),
     {'error', 'not_found'};
 get_caller_id_from_entries(Call, ListId, KeyDest) ->
-    case kz_datamgr:get_results(kapps_call:account_db(Call), <<"lists/entries">>, [{'key', ListId}]) of
+    case kz_datamgr:get_results(kapps_call:account_db(Call), <<"contacts/entries">>, [{'key', ListId}]) of
         {'ok', Entries} ->
             lager:debug("trying to find new caller id from ~b list entries", [length(Entries)]),
             get_new_caller_id(Call, Entries, ListId, KeyDest);
@@ -394,7 +394,6 @@ get_new_caller_id(Call, [], ListId, 'undefined') ->
     captured_key_and_destination(LengthDigits, CaptureGroup);
 get_new_caller_id(Call, [JObj | Entries], ListId, KeyDest) ->
     Entry = kz_json:get_json_value(<<"value">>, JObj),
-
     case get_key_and_dest(Call, Entry, KeyDest) of
         {'error', _}=Error -> Error;
         {CIDKey, Destination} ->
