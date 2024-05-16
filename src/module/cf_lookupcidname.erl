@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2023, 2600Hz
+%%% @copyright (C) 2010-2024, 2600Hz
 %%% @doc This module looks up the Caller ID Name by matching
 %%% numbers/patters with the provided lists.
 %%%
@@ -70,35 +70,23 @@ match_prefixes_in_lists(_AccountDb, _Number, []) ->
           match_number_result().
 match_prefixes_in_list(AccountDb, Prefixes, ListId) ->
     Keys = [[ListId, Prefix] || Prefix <- Prefixes],
-    ViewOptions = [{'keys', Keys}
-                  ,'include_docs'
-                  ],
-    case kz_datamgr:get_results(AccountDb , <<"lists/match_prefix_in_list">>, ViewOptions) of
+    ViewOptions = [{'keys', Keys}],
+    case kz_datamgr:get_results(AccountDb , <<"contacts/match_prefix_in_list">>, ViewOptions) of
         {'ok', []} ->
+            lager:debug("no matching prefixes in list ~p", [ListId]),
             'continue';
-        {'ok', Entries} ->
-            lager:debug("matched ~p prefixes, getting longest", [length(Entries)]),
+        {'ok', [Entry]} ->
+            Doc = kz_json:get_json_value(<<"value">>, Entry),
+            Name = kz_json:get_ne_binary_value(<<"name">>, Doc),
+            Number = kz_json:get_ne_binary_value(<<"number">>, Doc),
 
-            [Entry|_] = lists:sort(fun compare_prefixes/2, Entries),
-            Doc = kz_json:get_value(<<"doc">>, Entry),
-            Name = kz_json:get_value([<<"displayname">>, <<"name">>, <<"cid_name">>], Doc),
-
-            lager:debug("matched prefix ~p", [get_prefix(Entry)]),
+            lager:debug("matched prefix ~p", [Number]),
 
             {'stop', Name};
         {'error', Error} ->
             lager:warning("error while matching prefixes in list ~p: ~p", [ListId, Error]),
             'continue'
     end.
-
--spec compare_prefixes(kz_json:object(), kz_json:object()) -> boolean().
-compare_prefixes(JObj1, JObj2) ->
-    byte_size(get_prefix(JObj1)) >= byte_size(get_prefix(JObj2)).
-
--spec get_prefix(kz_json:object()) -> kz_term:ne_binary().
-get_prefix(JObj) ->
-    Doc = kz_json:get_value(<<"doc">>, JObj),
-    kz_json:get_ne_binary_value(<<"number">>, Doc, kz_json:get_ne_binary_value(<<"prefix">>, Doc)).
 
 %% TODO: this function from hon_util, may be place it somewhere in library?
 -spec build_keys(kz_term:ne_binary()) -> kz_term:binaries().
@@ -112,13 +100,13 @@ build_keys(<<D:1/binary, Rest/binary>>, Prefix, Acc) ->
     build_keys(Rest, <<Prefix/binary, D/binary>>, [<<Prefix/binary, D/binary>> | Acc]);
 build_keys(<<>>, _, Acc) -> Acc.
 
--spec match_regexp_in_list(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) ->
-          'continue' | {'stop', kz_term:api_binary()}.
-match_regexp_in_list(AccountDb, Number, ListId) when is_binary(ListId) ->
-    ViewOptions = [{'keys', [ListId]}
-                  ,'include_docs'
-                  ],
-    case kz_datamgr:get_results(AccountDb, <<"lists/regexps_in_list">>, ViewOptions) of
+-spec match_regexp_in_lists(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary() | kz_term:ne_binaries()) ->
+          kz_term:api_ne_binary().
+match_regexp_in_lists(_, _, []) ->
+    'undefined';
+match_regexp_in_lists(AccountDb, Number, ListIds) ->
+    ViewOptions = [{'keys', ListIds}],
+    case kz_datamgr:get_results(AccountDb, <<"contacts/regexps_in_list">>, ViewOptions) of
         {'ok', Entries} ->
             match_regexp(Entries, Number);
         Error ->
@@ -126,30 +114,20 @@ match_regexp_in_list(AccountDb, Number, ListId) when is_binary(ListId) ->
             'continue'
     end.
 
--spec match_regexp_in_lists(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary() | kz_term:ne_binaries()) ->
-          kz_term:api_ne_binary().
-match_regexp_in_lists(AccountDb, Number, [ListId | Rest]) ->
-    case match_regexp_in_list(AccountDb, Number, ListId) of
-        'continue' -> match_regexp_in_lists(AccountDb, Number, Rest);
-        {'stop', Name} -> Name
-    end;
-match_regexp_in_lists(_, _, []) ->
-    'undefined'.
-
 -spec match_regexp(kz_json:objects(), kz_term:ne_binary()) ->
-          'continue' |
-          {'stop', kz_term:api_binary()}.
-match_regexp([Entry | Entries], Number) ->
-    Regex = kz_json:get_ne_binary_value(<<"value">>, Entry),
-    Doc = kz_json:get_value(<<"doc">>, Entry),
-    case Regex =/= 'undefined'
-        andalso re:run(Number, Regex)
+          kz_term:api_ne_binary().
+match_regexp([Entry| Entries], Number) ->
+    Doc = kz_json:get_json_value(<<"value">>, Entry),
+    Regexp = kz_json:get_ne_binary_value(<<"regexp">>, Doc),
+    case Regexp =/= 'undefined'
+        andalso re:run(Number, Regexp)
     of
         'false' -> match_regexp(Entries, Number);
         'nomatch' -> match_regexp(Entries, Number);
         {'match', _} ->
-            lager:debug("matched regexp ~p", [kz_doc:id(Doc)]),
-            {'stop', kz_json:get_first_defined([<<"displayname">>, <<"name">>, <<"cid_name">>], Entry)}
+            lager:debug("matched regexp ~p", [Regexp]),
+            kz_json:get_ne_binary_value(<<"name">>, Doc)
     end;
 match_regexp([], _Number) ->
-    'continue'.
+    lager:warning("no matching regexp"),
+    'undefined'.
