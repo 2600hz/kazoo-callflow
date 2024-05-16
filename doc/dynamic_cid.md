@@ -82,46 +82,50 @@ This behavior is exactly same as `lists` action, the only difference is that you
 
 > **Notes** You can set  both the Caller ID number and name with this method.
 
-### List Entry document fields
+### List of contacts document fields
 
 #### Schema
 
-Schema for a match list entries
-
-
+Schema for a list of contacts
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`capture_group_key` | The number which is used to select this entry, length should be same as `capture_group_length` | `string()` |   | `false` |
-`capture_group_length` | Length of the numbers in the list entries for which it used to select desire Caller ID | `integer()` |   | `false` |
-`displayname` | Display name | `string(1..128)` |   | `false` |
-`firstname` | A friendly firstname | `string(1..128)` |   | `false` |
-`lastname` | A friendly lastname | `string(1..128)` |   | `false` |
-`list_id` | List id | `string()` |   | `true` |
-`number` | Phone number | `string()` |   | `false` |
-`pattern` | Match pattern | `string()` |   | `false` |
-`profile` | Profile data | `object()` | `{}` | `false` |
-`type` |   | `string(1..128)` |   | `false` |
+`capture_group.key` | The number which is used to select this contact, length should be same as `capture_group_length` | `string()` |  | `false` |  
+`capture_group.length` | Length of the numbers in the contacts for which it used to select desire Caller ID | `integer()` |  | `false` |  
+`capture_group` | The capture group information | `object()` | `{}` | `false` |  
+`contacts` | A list of contact information | `array([#/definitions/contacts](#contacts))` |  | `true` | 
+`favorite` | Whether the contact is a favorite | `boolean()` | `false` | `false` |  
+`first_name` | The first name of the contact | `string()` |  | `true` |  
+`history` | The history of contact usage | `array([#/definitions/history](#history))` | `[]` | `false` |  
+`last_name` | The last name of the contact | `string()` |  | `false` |  
+`organization.name` | The name of the organization | `string()` |  | `false` |  
+`organization` | The organization this entity belongs to | `object()` | `{}` | `false` |  
+`pattern` | Match pattern | `string()` |  | `false` |  
+`tags.[]` |   | `string()` |   | `false` |  
+`tags` | Tags that contact belong to | `array(string())` |   | `false` | 
 
-#### profile
+### contacts
 
-Defines user extended properties
-
+Schema for a contact.
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`addresses.[].address` | To specify the address | `string()` |   | `false` |
-`addresses.[].types` | To specify types of the address | `array()` |   | `false` |
-`addresses` | To specify the components of the addresses | `array(object())` |   | `false` |
-`assistant` | To specify the user's assistant | `string()` |   | `false` |
-`birthday` | To specify the birth date of the user | `string()` |   | `false` |
-`nicknames.[]` |   | `string()` |   | `false` |
-`nicknames` | To specify the text corresponding to the nickname of the user | `array(string())` |   | `false` |
-`note` | To specify supplemental information or a comment that is associated with the user | `string()` |   | `false` |
-`role` | To specify the function or part played in a particular situation by the user | `string()` |   | `false` |
-`sort-string` | To specify the family name or given name text to be used for national-language-specific sorting of the FN and N types | `string()` |   | `false` |
-`title` | To specify the position or job of the user | `string()` |   | `false` |
+`contact` | The phone number or email associated with the contact (Ex: +14158867903, user@2600hz.com) | `string()` |  | `true` | 
+`device_type` | The type of the device | `string('work', 'home', 'mobile', 'personal', 'fax')` |  | `false` |  
+`email_type` | The type of the email | `string('work', 'home')` |  | `false` |  
+`ext` | The extension of the user (Ex: 356, 622) | `string()` |  | `false` |  
+`primary` | If this is the primary contact for this contact type. | `boolean()` |  | `true` |  
+`type` | The type of this contact | `string('voice', 'email', 'sms')` |  | `true` |  
 
+### history
+
+Schema for a history.
+
+Key | Description | Type | Default | Required | Support Level
+--- | ----------- | ---- | ------- | -------- | -------------
+`contact` | The contact that was used | [#/definitions/contacts](#contacts) |  | `true` | 
+`notes` | Notes from the communication | `string()` |  | `false` |  
+`timestamp` | The gregorian timestamp | `integer()` |  | `false` |  
 
 
 ### Example 1: Two digits as CID selector
@@ -134,14 +138,22 @@ Consider that the user wants to call number `5149072508` using the caller id `16
     ]
 ```
 
-and the list entry document is:
+and the list of contacts document is:
 
 ```json
 {
-    "capture_group_length" : 2,
-    "capture_group_key": "01",
-    "number": "19058888888",
-    "name": "Awesome Inc."
+    "capture_group": {
+            "key": "01",
+            "length": 2
+    },
+    "contacts": [
+            {
+                "type": "voice",
+                "contact": "19058888888",
+                "primary": "true"
+            }
+    ],
+    "first_name": "Awesome Inc."
 }
 ```
 
@@ -158,10 +170,18 @@ Another example which uses number with length of 1 to select the Caller ID:
 
 ```json
 {
-    "capture_group_length" : 1,
-    "capture_group_key": "0",
-    "number": "16139999999",
-    "name": "Awesome Co."
+    "capture_group": {
+            "key": "0",
+            "length": 1
+    },
+    "contacts": [
+            {
+                "type": "voice",
+                "contact": "16139999999",
+                "primary": "true"
+            }
+    ],
+    "first_name": "Awesome Co."
 }
 ```
 
