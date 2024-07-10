@@ -949,9 +949,9 @@ handle_channel_transferor(Call, CallEvent) ->
     end.
 
 log_transferor('undefined') ->
-    lager:info("this callflow executor is transfering, terminate immediately");
+    lager:info("this callflow executor is transferring, terminate immediately");
 log_transferor(To) ->
-    lager:info("this callflow executor is transfering to ~s, terminate immediately", [To]).
+    lager:info("this callflow executor is transferring to ~s, terminate immediately", [To]).
 
 -spec handle_channel_transferee(kapps_call:call(), kz_call_event:payload()) -> 'ok'.
 handle_channel_transferee(Call, CallEvent) ->
