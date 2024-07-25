@@ -804,10 +804,19 @@ wait_for_pickup(SlotNumber, Slot, Data, Call) ->
             _ = publish_abandoned(Call, SlotNumber),
             _ = cleanup_slot(SlotNumber, cf_exe:callid(Call), kapps_call:account_db(Call)),
             cf_exe:stop(Call);
-        {'ok', _JObj} ->
-            lager:info("parked caller has been picked up"),
+        {'ok', 'channel_intercepted', JObj} ->
+            lager:info("parked caller has been picked up by fast pickup"),
+            PickerCallID = kz_json:get_ne_value(<<"Intercepted-By">>, JObj),
+            lager:debug("Picker leg ID: ~p", [PickerCallID]),
             _ = publish_retrieved(Call, SlotNumber),
             _ = cleanup_slot(SlotNumber, cf_exe:callid(Call), kapps_call:account_db(Call)),
+            {'ok', PickerLegJObj} = ecallmgr_fs_channel:fetch(PickerCallID, 'api'),
+            PickerCall0 = kapps_call:from_json(PickerLegJObj),
+            Routines = [{fun kapps_call:set_control_queue/2, kapps_call:control_queue_direct(Call)}
+               ,{fun kapps_call:set_controller_queue/2, kapps_call:controller_queue(Call)}
+               ],
+            PickerCall = kapps_call:exec(Routines, PickerCall0),
+            maybe_record_call(PickerCall),
             cf_exe:transfer(Call);
         _Else ->
             lager:info("unhandled case waiting for call pickup"),
