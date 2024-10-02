@@ -1,6 +1,6 @@
 - doc/README.md
 - "Callflow Actions":
-    - doc/branch_variable.md
+    - doc/branch_variable.md #onstensibly a more updated version of branch_variable.md?
     - doc/callflow.md
     - doc/call_forward.md
     - doc/call_waiting.md
@@ -22,7 +22,7 @@
     - doc/language.md
     - doc/manual_presence.md
     - doc/menu.md
-    - doc/missed_call_alert.erl
+    - doc/missed_call_alert.erl # Tooling?
     - doc/move.md
     - doc/offnet.md
     - doc/park.md
