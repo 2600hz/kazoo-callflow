@@ -21,13 +21,13 @@
     - doc/intercom.md
     - doc/language.md
     - doc/manual_presence.md
-    - doc/menu.md
+    - 'IVR': '!f:doc/menu.md'
     - doc/missed_call_alert.erl # Tooling?
     - doc/move.md
     - doc/offnet.md
     - doc/park.md
     - doc/page_group.md
-    - doc/pivot.md
+    - '!f:doc/pivot.md'
     - doc/play.md
     - doc/prepend_cid.md
     - doc/privacy.md
@@ -41,7 +41,7 @@
     - doc/set_cid.md
     - doc/set_variables.md
     - doc/sleep.md
-    - doc/temporal_route.md
+    - '!f:doc/temporal_route.md'
     - doc/tts.md
     - doc/user.md
     - doc/voicemail.md
