@@ -425,6 +425,8 @@ create_slot(ParkerCallId, PresenceType, SlotNumber, Data, Attended, Call) ->
                       ,{<<"CID-Name">>, kapps_call:caller_id_name(Call)}
                       ,{<<"CID-URI">>, kapps_call:from(Call)}
                       ,{<<"Hold-Media">>, kz_attributes:moh_attributes(RingbackId, <<"media_id">>, Call)}
+                      ,{<<"Parked-Number">>, parked_num(Call)}
+                      ,{<<"Timestamp">>, kz_time:now_s()}
                       ,{?PRESENCE_TYPE_KEY, PresenceType}
                       ]
                      ).
@@ -613,6 +615,7 @@ update_call_id(Replaces, Call) ->
                        ,fun(J) -> kz_json:set_value(<<"CID-URI">>, kapps_call:from(Call), J) end
                        ,fun(J) -> kz_json:set_value(<<"Attended">>, 'false', J) end
                        ,fun(J) -> maybe_set_hold_media(J, Call) end
+                       ,fun(J) -> kz_json:set_value(<<"Parked-Number">>, parked_num(Call), J) end
                        ],
             Slot = kz_json:get_json_value(<<"slot">>, Doc),
             UpdatedSlot = lists:foldr(fun(F, J) -> F(J) end, Slot, Updaters),
@@ -1129,4 +1132,11 @@ ringback_endpoint_id(Call) ->
         EndpointId ->
             lager:debug("call was referred by endpoint id  => ~s / ~s", [kapps_call:account_id(Call), EndpointId]),
             EndpointId
+    end.
+
+-spec parked_num(kapps_call:call()) -> kz_term:api_binary().
+parked_num(Call) ->
+    case kapps_call:direction(Call) of
+        <<"outbound">> -> kapps_call:callee_id_number(Call);
+        _ -> kapps_call:caller_id_number(Call)
     end.
