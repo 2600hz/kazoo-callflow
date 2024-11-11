@@ -36,7 +36,7 @@
 
 The maintenance module defines a set of functions useful to sysadmins for adjusting how the callflow app operates.
 
-When processing route requests, the default context of the call does not permit unauthorized calls to make use of the `no_match` callflow. Some Kazoo applications will set the context used (say during a blind transfer) to note that this particular route request should be authorized to use the `no_match` callflow.
+When processing route requests, the default context of the call does not permit unauthorized calls to make use of the `no_match` callflow. Some {% BRAND_NAME %} applications will set the context used (say during a blind transfer) to note that this particular route request should be authorized to use the `no_match` callflow.
 
 ```bash
 sup callflow_maintenance allow_authz_context {APP_NAME} [{AUTHZ_CONTEXT}]

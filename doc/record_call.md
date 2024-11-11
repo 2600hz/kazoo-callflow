@@ -15,7 +15,7 @@ Key | Description | Type | Default | Required | Support Level
 `action` | Whether to start or stop the recording | `string('start' | 'stop')` | `start` | `true` |  
 `format` | What format to store the recording on disk | `string('mp3' | 'wav')` |   | `false` |  
 `label` | Label to include in the origin of call recording | `string()` |   | `false` |  
-`media_id` | Doc ID of the created recording - if unspecified, KAZOO will generate one | `string()` |   | `false` |  
+`media_id` | Doc ID of the created recording - if unspecified, {% BRAND_NAME %} will generate one | `string()` |   | `false` |  
 `media_name` | the name of media | `string()` |   | `false` |  
 `method` | HTTP verb to use when sending the recording to the supplied URL | `string('put' | 'post')` | `put` | `false` |  
 `origin` | How the recording was started - read-only | `string()` |   | `false` |  
@@ -35,12 +35,12 @@ Key | Description | Type | Default | Required | Support Level
 
 ## Storage of recordings
 
-If you supply a URL in the `data` portion of the callflow, Kazoo will send an HTTP PUT with the recording to the URL when the recording has finished.
+If you supply a URL in the `data` portion of the callflow, {% BRAND_NAME %} will send an HTTP PUT with the recording to the URL when the recording has finished.
 
 If you omit the URL, there are a couple options for storage:
 
 * Check `system_config/media` for the `store_recordings` boolean()
     * If `false`, no storage will occur
     * If `true`, check `system_config/media` for `third_party_bigcouch_host`
-        * If `undefined`, store to the Kazoo BigCouch cluster
+        * If `undefined`, store to the {% BRAND_NAME %} BigCouch cluster
         * If defined, send the recording to the configured URL

@@ -7,7 +7,7 @@ Sometimes you need to group media files together to act as a single logical audi
 There are four types of media that can be included:
 
 1. `play`: same as the `play` callflow action, a media file or HTTP URL, to play to the caller
-2. `prompt`: play a Kazoo system prompt (or the account's overridden version)
+2. `prompt`: play a {% BRAND_NAME %} system prompt (or the account's overridden version)
 3. `say`: a way to say certain phrases (like pronouncing each digit in a number)
 4. `tts`: play the text as speech
 

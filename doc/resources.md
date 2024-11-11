@@ -14,8 +14,8 @@ Key | Description | Type | Default | Required | Support Level
 `addresses` |   | `object()` |   | `false` |  
 `bypass_e164` | Use the original requested number instead of normalizing to E164 | `boolean()` |   | `false` |  
 `caller_id_type` | Which configured caller-id to use (key in the 'caller_id' object) | `string()` | `external` | `false` |  
-`custom_sip_headers.in` | Custom SIP Headers to be applied to calls inbound to Kazoo from the endpoint | [#/definitions/custom_sip_headers](#custom_sip_headers) |   | `false` |  
-`custom_sip_headers.out` | Custom SIP Headers to be applied to calls outbound from Kazoo to the endpoint | [#/definitions/custom_sip_headers](#custom_sip_headers) |   | `false` |  
+`custom_sip_headers.in` | Custom SIP Headers to be applied to calls inbound to {% BRAND_NAME %} from the endpoint | [#/definitions/custom_sip_headers](#custom_sip_headers) |   | `false` |  
+`custom_sip_headers.out` | Custom SIP Headers to be applied to calls outbound from {% BRAND_NAME %} to the endpoint | [#/definitions/custom_sip_headers](#custom_sip_headers) |   | `false` |  
 `custom_sip_headers.^[a-zA-z0-9_\-]+$` | The SIP header to add | `string() | boolean() | integer()` |   | `false` |  
 `custom_sip_headers` | A property list of SIP headers | `object()` |   | `false` |  
 `do_not_normalize` | Use the original requested number instead of normalizing; otherwise try to apply the endpoint's dialplan to the requested number | `boolean()` |   | `false` |  
@@ -58,7 +58,7 @@ Adding the value `"zone"` to the `dynamic_flags` array will result in a flag set
 Adding the value `"custom_channel_vars."` appended with a normalized variable name will add the value (if present) to the flags array.  For example, `"custom_channel_vars.owner_id"`.
 
 #### PLEASE NOTE
-Developers can expect that custom channel variables (CCVs) will be an available field. They can further expect that any variables they have placed there will always be available. However, developers should not assume that all variables offered in CCVs will always be available. Internal KAZOO applications also add CCVs to channels, however they may not always continue to add those variables or add them in a consistent way. Should you need to utilize a CCV added by an internal KAZOO app, we advise completing QA on all KAZOO versions to ensure these values are still present and in the format you are expecting before installing those versions on your or your customers' clusters.
+Developers can expect that custom channel variables (CCVs) will be an available field. They can further expect that any variables they have placed there will always be available. However, developers should not assume that all variables offered in CCVs will always be available. Internal {% BRAND_NAME %} applications also add CCVs to channels, however they may not always continue to add those variables or add them in a consistent way. Should you need to utilize a CCV added by an internal {% BRAND_NAME %} app, we advise completing QA on all {% BRAND_NAME %} versions to ensure these values are still present and in the format you are expecting before installing those versions on your or your customers' clusters.
 
 ## Examples
 
@@ -123,7 +123,7 @@ You can include a couple macros that will be replaced at the time of a call in t
 }
 ```
 
-By using `{caller_id_number}`, Kazoo will replace the header value with the actual Caller-ID number for that call. If the number was `4158867900` then the SIP INVITE would include the header `X-Billing-Number: 4158867900`.
+By using `{caller_id_number}`, {% BRAND_NAME %} will replace the header value with the actual Caller-ID number for that call. If the number was `4158867900` then the SIP INVITE would include the header `X-Billing-Number: 4158867900`.
 
 You can find the listing of available macros in the `/v2/schemas/system_config.ecallmgr` API call; look for the `expandable_macros` defaults:
 
