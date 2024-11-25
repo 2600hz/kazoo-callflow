@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2024, 2600Hz
 %%% @doc Check/compose Voicemail messages.
 %%%
 %%% <h4>Data options:</h4>
@@ -223,11 +223,12 @@
                  ,play_greeting_intro = 'false' :: boolean()
                  ,use_person_not_available = 'false' :: boolean()
                  ,not_configurable = 'false' :: boolean()
-                 ,account_db :: kz_term:api_ne_binary()
+                 ,account_id :: kz_term:api_ne_binary()
                  ,media_extension :: kz_term:api_ne_binary()
                  ,forward_type :: kz_term:api_ne_binary()
                  ,oldest_message_first = 'false' :: boolean()
                  ,operator_number :: kz_term:api_ne_binary()
+                 ,language :: kz_term:api_ne_binary()
                  }).
 -type mailbox() :: #mailbox{}.
 
@@ -237,12 +238,15 @@
 %% @end
 %%------------------------------------------------------------------------------
 -spec handle(kz_json:object(), kapps_call:call()) -> 'ok'.
-handle(Data, Call) ->
+handle(Data, Call0) ->
+    #mailbox{language=Lang}=Mailbox = get_mailbox_profile(Data, Call0),
+    Call = kapps_call:set_language(Lang, Call0),
+
     case kz_json:get_ne_binary_value(<<"action">>, Data, <<"compose">>) of
         <<"compose">> ->
             kapps_call_command:answer(Call),
             lager:debug("answered the call and composing the voicemail"),
-            case compose_voicemail(get_mailbox_profile(Data, Call), Call) of
+            case compose_voicemail(Mailbox, Call) of
                 'ok' ->
                     lager:info("compose voicemail complete"),
                     cf_exe:continue(Call);
@@ -255,8 +259,8 @@ handle(Data, Call) ->
             end;
         <<"check">> ->
             kapps_call_command:answer(Call),
-            case check_mailbox(get_mailbox_profile(Data, Call), Call) of
-                'ok' ->  cf_exe:continue(Call);
+            case check_mailbox(Mailbox, Call) of
+                'ok' -> cf_exe:continue(Call);
                 {'error', 'channel_hungup'} -> cf_exe:stop(Call)
             end;
         _ ->
@@ -267,7 +271,6 @@ handle(Data, Call) ->
 %% @doc
 %% @end
 %%------------------------------------------------------------------------------
-
 -spec check_mailbox(mailbox(), kapps_call:call()) ->
           'ok' | {'error', 'channel_hungup'}.
 check_mailbox(Box, Call) ->
@@ -285,36 +288,40 @@ check_mailbox(#mailbox{owner_id=OwnerId}=Box, Call, Loop) ->
 -spec check_mailbox(mailbox(), boolean(), kapps_call:call(), non_neg_integer()) ->
           'ok' | {'error', 'channel_hungup'}.
 check_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}, _, Call, Loop) when Loop > MaxLoginAttempts ->
-    %% if we have exceeded the maximum loop attempts then terminate this call
+    %% if we have exceeded the maximum loop attempts then terminate
+    %% this call
     lager:info("maximum number of invalid attempts to check mailbox"),
     _ = kapps_call_command:b_prompt(<<"vm-abort">>, Call),
     'ok';
 check_mailbox(#mailbox{exists='false'
                       ,max_login_attempts=MaxLoginAttempts
                       }=Box, _ , Call, Loop) ->
-    %% if the callflow did not define the mailbox to check then request the mailbox ID from the user
+    %% if the callflow did not define the mailbox to check then
+    %% request the mailbox ID from the user
     case find_mailbox(Box, Call, ?DEFAULT_FIND_BOX_PROMPT, Loop) of
         {'ok', PossibleBox, NewLoop} -> check_mailbox(PossibleBox, Call, NewLoop);
         {'error', 'not_found'} ->
-            %% can't find mailbox, set Loop to max to play abort prompts in above function clause
+            %% can't find mailbox, set Loop to max to play abort
+            %% prompts in above function clause
             check_mailbox(Box, Call, MaxLoginAttempts + 1)
     end;
 check_mailbox(#mailbox{is_setup='false'}=Box, 'true', Call, _) ->
-    %% If this is the owner of the mailbox calling in and it is not setup then jump
-    %% right to the setup wizard
+    %% If this is the owner of the mailbox calling in and it is not
+    %% setup then jump right to the setup wizard
     lager:info("caller is the owner of this mailbox, and it has not been setup yet"),
     main_menu(Box, Call);
 check_mailbox(#mailbox{announcement_only='true', require_pin='false'}=Box, 'true', Call, _) ->
     lager:info("caller is owner of announcement only mailbox, and requires no pin"),
     check_mailbox_menu(Box, Call);
 check_mailbox(#mailbox{require_pin='false'}=Box, 'true', Call, _) ->
-    %% If this is the owner of the mailbox calling in and it doesn't require a pin then jump
-    %% right to the main menu
+    %% If this is the owner of the mailbox calling in and it doesn't
+    %% require a pin then jump right to the main menu
     lager:info("caller is the owner of this mailbox, and requires no pin"),
     check_mailbox_menu(Box, Call);
 check_mailbox(#mailbox{pin = <<>>}, _, Call, _) ->
-    %% If the caller is not the owner or the owner with require pin set but the voicemail box
-    %% has no pin set then terminate this call.
+    %% If the caller is not the owner or the owner with require pin
+    %% set but the voicemail box has no pin set then terminate this
+    %% call.
     lager:info("attempted to sign into a mailbox with no pin"),
     _ = kapps_call_command:b_prompt(<<"vm-no_access">>, Call),
     'ok';
@@ -360,7 +367,8 @@ check_mailbox_menu(Box, Call) -> main_menu(Box, Call).
 
 find_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}, _Call, _VmEntryIdMedia, Loop)
   when Loop > MaxLoginAttempts ->
-    %% if we have exceeded the maximum loop attempts then terminate this call
+    %% if we have exceeded the maximum loop attempts then terminate
+    %% this call
     %% Note: caller should play vm-abort or appropriate abort failure
     lager:info("maximum number of invalid attempts to find mailbox"),
     {'error', 'not_found'};
@@ -1984,100 +1992,106 @@ new_message(AttachmentName, Length, #mailbox{mailbox_number=BoxNum
 -spec get_mailbox_profile(kz_json:object(), kapps_call:call()) -> mailbox().
 get_mailbox_profile(Data, Call) ->
     Id = kz_json:get_ne_binary_value(<<"id">>, Data),
-    AccountDb = kapps_call:account_db(Call),
+    AccountId = kapps_call:account_id(Call),
 
-    case get_mailbox_doc(AccountDb, Id, Data, Call) of
+    case get_mailbox_doc(AccountId, Id, Data, Call) of
         {'ok', MailboxJObj} ->
-            MailboxId = kz_doc:id(MailboxJObj),
-            lager:info("loaded voicemail box ~s", [MailboxId]),
-            Default = #mailbox{mailbox_doc=MailboxJObj},
-
-            %% Don't check if the voicemail box belongs to the owner (by default) if the call was not
-            %% specifically to him, IE: calling a ring group and going to voicemail should not check
-            LastAct = kapps_call:kvs_fetch('cf_last_action', Call),
-            CheckIfOwner = (('undefined' =:= LastAct)
-                            orelse ('cf_device' =:= LastAct)
-                           ),
-
-            {NameMediaId, OwnerId} = owner_info(AccountDb, MailboxJObj),
-
-            MaxMessageCount = max_message_count(Call),
-            MsgCount = kvm_messages:count(kapps_call:account_id(Call), MailboxId),
-
-            lager:info("mailbox limited to ~p voicemail messages (has ~b currently)"
-                      ,[MaxMessageCount, MsgCount]
-                      ),
-
-            SeekDuration = seek_duration(MailboxJObj),
-            AfterNotifyAction = after_notify_action(MailboxJObj),
-            AfterForwardAction = after_forward_action(MailboxJObj),
-            IsFfRwEnabled = is_ff_rw_enabled(MailboxJObj),
-
-            #mailbox{mailbox_id = MailboxId
-                    ,mailbox_doc = MailboxJObj
-                    ,exists = 'true'
-                    ,keys = populate_keys(Call)
-                    ,announcement_only =
-                         kzd_vmboxes:announcement_only(MailboxJObj, Default#mailbox.announcement_only)
-                    ,skip_instructions =
-                         kzd_vmboxes:skip_instructions(MailboxJObj, Default#mailbox.skip_instructions)
-                    ,skip_greeting =
-                         kzd_vmboxes:skip_greeting(MailboxJObj, Default#mailbox.skip_greeting)
-                    ,skip_envelope =
-                         kzd_vmboxes:skip_envelope(MailboxJObj, Default#mailbox.skip_envelope)
-                    ,envelope_type =
-                         kzd_vmboxes:envelope_type(MailboxJObj, Default#mailbox.envelope_type)
-                    ,pin =
-                         kzd_vmboxes:pin(MailboxJObj, <<>>)
-                    ,timezone =
-                         kzd_vmboxes:timezone(MailboxJObj)
-                    ,mailbox_number =
-                         kzd_vmboxes:mailbox(MailboxJObj, kapps_call:request_user(Call))
-                    ,require_pin = should_require_pin(MailboxJObj)
-                    ,check_if_owner =
-                         kzd_vmboxes:check_if_owner(MailboxJObj, CheckIfOwner)
-                    ,unavailable_media_id =
-                         kz_json:get_ne_value([<<"media">>, <<"unavailable">>], MailboxJObj)
-                    ,temporary_unavailable_media_id =
-                         kz_json:get_ne_value([<<"media">>, <<"temporary_unavailable">>], MailboxJObj)
-                    ,name_media_id =
-                         NameMediaId
-                    ,owner_id =
-                         OwnerId
-                    ,is_setup =
-                         kzd_vmboxes:is_setup(MailboxJObj, 'false')
-                    ,max_message_count =
-                         kz_term:to_integer(MaxMessageCount)
-                    ,max_message_length = find_max_message_length([Data, MailboxJObj])
-                    ,min_message_length = min_recording_length(Call)
-                    ,message_count =
-                         MsgCount
-                    ,transcribe_voicemail =
-                         kz_json:is_true(<<"transcribe">>, MailboxJObj, kvm_util:transcribe_default())
-                    ,notifications =
-                         kz_json:get_json_value(<<"notifications">>, MailboxJObj)
-                    ,after_notify_action = AfterNotifyAction
-                    ,after_forward_action = AfterForwardAction
-                    ,is_ff_rw_enabled = IsFfRwEnabled
-                    ,seek_duration = SeekDuration
-                    ,interdigit_timeout =
-                         kz_json:find(<<"interdigit_timeout">>, [MailboxJObj, Data], kapps_call_command:default_interdigit_timeout())
-                    ,play_greeting_intro =
-                         kz_json:is_true(<<"play_greeting_intro">>, MailboxJObj, Default#mailbox.play_greeting_intro)
-                    ,use_person_not_available =
-                         kz_json:is_true(<<"use_person_not_available">>, MailboxJObj, Default#mailbox.use_person_not_available)
-                    ,not_configurable=
-                         kz_json:is_true(<<"not_configurable">>, MailboxJObj, 'false')
-                    ,account_db = AccountDb
-                    ,media_extension = kzd_vmboxes:media_extension(MailboxJObj)
-                    ,forward_type = kzd_vmboxes:vm_message_forward_type(MailboxJObj)
-                    ,oldest_message_first = kzd_vmboxes:oldest_message_first(MailboxJObj)
-                    ,operator_number = kzd_vmboxes:operator_number(MailboxJObj)
-                    };
+            build_mailbox_profile(Data, Call, AccountId, MailboxJObj);
         {'error', R} ->
             lager:info("failed to load voicemail box ~s, ~p", [Id, R]),
             #mailbox{}
     end.
+
+build_mailbox_profile(Data, Call, AccountId, MailboxJObj) ->
+    MailboxId = kz_doc:id(MailboxJObj),
+    lager:info("loaded voicemail box ~s", [MailboxId]),
+    Default = #mailbox{mailbox_doc=MailboxJObj},
+
+    %% Don't check if the voicemail box belongs to the owner (by default) if the call was not
+    %% specifically to him, IE: calling a ring group and going to voicemail should not check
+    LastAct = kapps_call:kvs_fetch('cf_last_action', Call),
+    CheckIfOwner = (('undefined' =:= LastAct)
+                    orelse ('cf_device' =:= LastAct)
+                   ),
+
+    {NameMediaId, OwnerId} = owner_info(AccountId, MailboxJObj),
+
+    MaxMessageCount = max_message_count(Call),
+    MsgCount = kvm_messages:count(kapps_call:account_id(Call), MailboxId),
+
+    lager:info("mailbox limited to ~p voicemail messages (has ~b currently)"
+              ,[MaxMessageCount, MsgCount]
+              ),
+
+    SeekDuration = seek_duration(MailboxJObj),
+    AfterNotifyAction = after_notify_action(MailboxJObj),
+    AfterForwardAction = after_forward_action(MailboxJObj),
+    IsFfRwEnabled = is_ff_rw_enabled(MailboxJObj),
+
+    {'ok', AccountDoc} = kzd_accounts:fetch(AccountId),
+
+    #mailbox{mailbox_id = MailboxId
+            ,mailbox_doc = MailboxJObj
+            ,exists = 'true'
+            ,keys = populate_keys(Call)
+            ,announcement_only =
+                 kzd_vmboxes:announcement_only(MailboxJObj, Default#mailbox.announcement_only)
+            ,skip_instructions =
+                 kzd_vmboxes:skip_instructions(MailboxJObj, Default#mailbox.skip_instructions)
+            ,skip_greeting =
+                 kzd_vmboxes:skip_greeting(MailboxJObj, Default#mailbox.skip_greeting)
+            ,skip_envelope =
+                 kzd_vmboxes:skip_envelope(MailboxJObj, Default#mailbox.skip_envelope)
+            ,envelope_type =
+                 kzd_vmboxes:envelope_type(MailboxJObj, Default#mailbox.envelope_type)
+            ,pin =
+                 kzd_vmboxes:pin(MailboxJObj, <<>>)
+            ,timezone =
+                 kzd_vmboxes:timezone(MailboxJObj)
+            ,mailbox_number =
+                 kzd_vmboxes:mailbox(MailboxJObj, kapps_call:request_user(Call))
+            ,require_pin = should_require_pin(MailboxJObj)
+            ,check_if_owner =
+                 kzd_vmboxes:check_if_owner(MailboxJObj, CheckIfOwner)
+            ,unavailable_media_id =
+                 kz_json:get_ne_value([<<"media">>, <<"unavailable">>], MailboxJObj)
+            ,temporary_unavailable_media_id =
+                 kz_json:get_ne_value([<<"media">>, <<"temporary_unavailable">>], MailboxJObj)
+            ,name_media_id =
+                 NameMediaId
+            ,owner_id =
+                 OwnerId
+            ,is_setup =
+                 kzd_vmboxes:is_setup(MailboxJObj, 'false')
+            ,max_message_count =
+                 kz_term:to_integer(MaxMessageCount)
+            ,max_message_length = find_max_message_length([Data, MailboxJObj])
+            ,min_message_length = min_recording_length(Call)
+            ,message_count =
+                 MsgCount
+            ,transcribe_voicemail =
+                 kz_json:is_true(<<"transcribe">>, MailboxJObj, kvm_util:transcribe_default())
+            ,notifications =
+                 kz_json:get_json_value(<<"notifications">>, MailboxJObj)
+            ,after_notify_action = AfterNotifyAction
+            ,after_forward_action = AfterForwardAction
+            ,is_ff_rw_enabled = IsFfRwEnabled
+            ,seek_duration = SeekDuration
+            ,interdigit_timeout =
+                 kz_json:find(<<"interdigit_timeout">>, [MailboxJObj, Data], kapps_call_command:default_interdigit_timeout())
+            ,play_greeting_intro =
+                 kz_json:is_true(<<"play_greeting_intro">>, MailboxJObj, Default#mailbox.play_greeting_intro)
+            ,use_person_not_available =
+                 kz_json:is_true(<<"use_person_not_available">>, MailboxJObj, Default#mailbox.use_person_not_available)
+            ,not_configurable=
+                 kz_json:is_true(<<"not_configurable">>, MailboxJObj, 'false')
+            ,account_id = AccountId
+            ,media_extension = kzd_vmboxes:media_extension(MailboxJObj)
+            ,forward_type = kzd_vmboxes:vm_message_forward_type(MailboxJObj)
+            ,oldest_message_first = kzd_vmboxes:oldest_message_first(MailboxJObj)
+            ,operator_number = kzd_vmboxes:operator_number(MailboxJObj)
+            ,language = kzd_accounts:language(AccountDoc)
+            }.
 
 -spec should_require_pin(kz_json:object()) -> boolean().
 should_require_pin(MailboxJObj) ->
@@ -2133,17 +2147,17 @@ max_message_count(Call) ->
 
 -spec owner_info(kz_term:ne_binary(), kz_json:object()) ->
           {kz_term:api_binary(), kz_term:api_binary()}.
-owner_info(AccountDb, MailboxJObj) ->
-    owner_info(AccountDb, MailboxJObj, kz_json:get_ne_value(<<"owner_id">>, MailboxJObj)).
+owner_info(AccountId, MailboxJObj) ->
+    owner_info(AccountId, MailboxJObj, kz_json:get_ne_value(<<"owner_id">>, MailboxJObj)).
 
 -spec owner_info(kz_term:ne_binary(), kz_json:object(), kz_term:api_binary()) ->
           {kz_term:api_binary(), kz_term:api_binary()}.
-owner_info(_AccountDb, MailboxJObj, 'undefined') ->
+owner_info(_AccountId, MailboxJObj, 'undefined') ->
     {kz_json:get_ne_value(?RECORDED_NAME_KEY, MailboxJObj)
     ,'undefined'
     };
-owner_info(AccountDb, MailboxJObj, OwnerId) ->
-    case kz_datamgr:open_cache_doc(AccountDb, OwnerId) of
+owner_info(AccountId, MailboxJObj, OwnerId) ->
+    case kz_datamgr:open_cache_doc(AccountId, OwnerId) of
         {'ok', OwnerJObj} ->
             {kz_json:find(?RECORDED_NAME_KEY, [OwnerJObj, MailboxJObj]), OwnerId};
         {'error', 'not_found'} ->
@@ -2189,52 +2203,52 @@ populate_keys(Call) ->
 -spec get_mailbox_doc(kz_term:ne_binary(), kz_term:api_binary(), kz_json:object(), kapps_call:call()) ->
           {'ok', kzd_vmboxes:doc()} |
           {'error', any()}.
-get_mailbox_doc(Db, Id, Data, Call) ->
+get_mailbox_doc(AccountId, Id, Data, Call) ->
     CaptureGroup = kapps_call:kvs_fetch('cf_capture_group', Call),
     case kz_term:is_empty(Id) of
         'false' ->
             lager:info("opening vm box ~s", [Id]),
-            kz_datamgr:open_doc(Db, Id);
+            kz_datamgr:open_cache_doc(AccountId, Id);
         'true' when CaptureGroup =:= <<>>; CaptureGroup =:= 'undefined' ->
-            get_user_mailbox_doc(Data, Call);
+            get_user_mailbox_doc(AccountId, Data, Call);
         'true' ->
             lager:info("searching for vm box by capture group '~s'", [CaptureGroup]),
             Opts = [{'key', CaptureGroup}
                    ,'include_docs'
                    ,'first_when_multiple'
                    ],
-            case kz_datamgr:get_single_result(Db, <<"attributes/mailbox_number">>, Opts) of
+            case kz_datamgr:get_single_result(AccountId, <<"attributes/mailbox_number">>, Opts) of
                 {'ok', JObj} ->
                     {'ok', kz_json:get_json_value(<<"doc">>, JObj, kz_json:new())};
                 E -> E
             end
     end.
 
--spec get_user_mailbox_doc(kz_json:object(), kapps_call:call()) ->
+-spec get_user_mailbox_doc(kz_term:ne_binary(), kz_json:object(), kapps_call:call()) ->
           {'ok', kzd_vmboxes:doc()} |
           {'error', any()}.
-get_user_mailbox_doc(Data, Call) ->
-    get_user_mailbox_doc(Data, Call, kapps_call:owner_id(Call)).
+get_user_mailbox_doc(AccountId, Data, Call) ->
+    get_user_mailbox_doc(AccountId, Data, Call, kapps_call:owner_id(Call)).
 
--spec get_user_mailbox_doc(kz_json:object(), kapps_call:call(), kz_term:api_binary()) ->
+-spec get_user_mailbox_doc(kz_term:ne_binary(), kz_json:object(), kapps_call:call(), kz_term:api_binary()) ->
           {'ok', kzd_vmboxes:doc()} |
           {'error', any()}.
-get_user_mailbox_doc(Data, Call, 'undefined') ->
+get_user_mailbox_doc(AccountId, Data, Call, 'undefined') ->
     DeviceId = kapps_call:authorizing_id(Call),
-    case kz_datamgr:open_cache_doc(kapps_call:account_db(Call), DeviceId) of
+    case kz_datamgr:open_cache_doc(AccountId, DeviceId) of
         {'ok', DeviceJObj} ->
             case kzd_devices:owner_id(DeviceJObj) of
                 'undefined' ->
                     lager:debug("device used to check voicemail has no owner assigned", []),
                     {'error', "request voicemail box number"};
                 OwnerId ->
-                    get_user_mailbox_doc(Data, Call, OwnerId)
+                    get_user_mailbox_doc(AccountId, Data, Call, OwnerId)
             end;
         {'error', _} ->
             lager:debug("unknown device used to check voicemail", []),
             {'error', "request voicemail box number"}
     end;
-get_user_mailbox_doc(Data, Call, OwnerId) ->
+get_user_mailbox_doc(_AccountId, Data, Call, OwnerId) ->
     SingleMailboxLogin = kz_json:is_true(<<"single_mailbox_login">>, Data, 'false'),
     case kz_attributes:owned_by_docs(OwnerId, <<"vmbox">>, Call) of
         [] ->
@@ -2247,7 +2261,7 @@ get_user_mailbox_doc(Data, Call, OwnerId) ->
             {'ok', Box};
         Boxes ->
             lager:debug("found ~p vmboxes assigned to owner ~s", [length(Boxes), OwnerId]),
-            maybe_match_callerid(Boxes,Data, Call)
+            maybe_match_callerid(Boxes, Data, Call)
     end.
 
 -spec maybe_match_callerid([kzd_vmboxes:doc()], kz_json:object(), kapps_call:call()) ->
@@ -2517,10 +2531,10 @@ is_owner(Call, OwnerId) ->
 
 -spec send_mwi_update(mailbox()) -> 'ok'.
 send_mwi_update(#mailbox{mailbox_id='undefined'}) -> 'ok';
-send_mwi_update(#mailbox{account_db=AccountDb
+send_mwi_update(#mailbox{account_id=AccountId
                         ,mailbox_id=BoxId
                         }) ->
-    kvm_mwi:notify_vmbox(AccountDb, BoxId).
+    kvm_mwi:notify_vmbox(AccountId, BoxId).
 
 -spec silence_threshold(mailbox()) -> pos_integer().
 silence_threshold(#mailbox{mailbox_doc=Doc}) ->
