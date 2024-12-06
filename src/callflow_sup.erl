@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -33,7 +33,6 @@
                          ,[{'type', <<"callflow">>}]
                          ,[{'type', <<"device">>}]
                          ,[{'type', <<"parked_calls">>}]
-                         ,[{'doc_id', ?MANUAL_PRESENCE_DOC}]
                          ]).
 
 -define(CACHE_PROPS, [{'origin_bindings', ?ORIGIN_BINDINGS}

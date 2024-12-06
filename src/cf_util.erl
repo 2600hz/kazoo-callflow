@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -67,7 +67,6 @@
 -define(SIP_USER_OWNERS_KEY(Db, User), {?MODULE, 'sip_user_owners', Db, User}).
 -define(SIP_ENDPOINT_ID_KEY(Db, User), {?MODULE, 'sip_endpoint_id', Db, User}).
 -define(PARKING_PRESENCE_KEY(Db, Request), {?MODULE, 'parking_callflow', Db, Request}).
--define(MANUAL_PRESENCE_KEY(Db), {?MODULE, 'manual_presence', Db}).
 -define(OPERATOR_KEY, kapps_config:get_ne_binary(?CF_CONFIG_CAT, <<"operator_key">>, <<"0">>)).
 
 -define(VM_CACHE_KEY(Db, Id), {?MODULE, 'vmbox', Db, Id}).
@@ -180,33 +179,21 @@ presence_parking_slot_resp(Username, Realm, AccountDb, SlotNumber) ->
 -spec manual_presence(kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok' | 'not_found'.
 manual_presence(Username, Realm) ->
     case kapps_util:get_account_by_realm(Realm) of
-        {'ok', AccountDb} -> check_manual_presence(Username, Realm, AccountDb);
+        {'ok', AccountDb} -> fetch_manual_presence_doc(Username, Realm, AccountDb);
         _E -> 'not_found'
-    end.
-
--spec check_manual_presence(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
-check_manual_presence(Username, Realm, AccountDb) ->
-    case kz_cache:fetch_local(?CACHE_NAME, ?MANUAL_PRESENCE_KEY(AccountDb)) of
-        {'ok', JObj} -> manual_presence_resp(Username, Realm, JObj);
-        {'error', 'not_found'} -> fetch_manual_presence_doc(Username, Realm, AccountDb)
     end.
 
 -spec fetch_manual_presence_doc(kz_term:ne_binary(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok' | 'not_found'.
 fetch_manual_presence_doc(Username, Realm, AccountDb) ->
-    case kz_datamgr:open_doc(AccountDb, ?MANUAL_PRESENCE_DOC) of
+    PresenceId = <<Username/binary, "@", Realm/binary>>,
+    case kzd_presence:fetch_presence(AccountDb, PresenceId) of
         {'ok', JObj} ->
-            CacheProps = [{'origin', {'db', AccountDb, ?MANUAL_PRESENCE_DOC}}],
-            kz_cache:store_local(?CACHE_NAME, ?MANUAL_PRESENCE_KEY(AccountDb), JObj, CacheProps),
-            manual_presence_resp(Username, Realm, JObj);
-        {'error', 'not_found'} ->
-            CacheProps = [{'origin', {'db', AccountDb, ?MANUAL_PRESENCE_DOC}}],
-            kz_cache:store_local(?CACHE_NAME, ?MANUAL_PRESENCE_KEY(AccountDb), kz_json:new(), CacheProps);
+            manual_presence_resp(PresenceId, JObj);
         {'error', _} -> 'not_found'
     end.
 
--spec manual_presence_resp(kz_term:ne_binary(), kz_term:ne_binary(), kz_json:object()) -> 'ok' | 'not_found'.
-manual_presence_resp(Username, Realm, JObj) ->
-    PresenceId = <<Username/binary, "@", Realm/binary>>,
+-spec manual_presence_resp(kz_term:ne_binary(), kz_json:object()) -> 'ok' | 'not_found'.
+manual_presence_resp(PresenceId, JObj) ->
     case kz_json:get_value(PresenceId, JObj) of
         'undefined' -> 'not_found';
         State -> kapps_call_command:presence(State, PresenceId)
