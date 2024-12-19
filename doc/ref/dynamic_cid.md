@@ -10,7 +10,7 @@ Validator for the dynamic_cid callflow data object
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`action` | What action to perform | `string('list' | 'lists' | 'manual' | 'static')` |   | `false` |  
+`action` | What action to perform | `string('list' \| 'lists' \| 'manual' \| 'static')` |   | `false` |  
 `caller_id.name` | Caller ID Name | `string()` |   | `false` |  
 `caller_id.number` | Caller ID Number | `string()` |   | `false` |  
 `caller_id` | Static Caller ID settings | `object()` |   | `false` |  

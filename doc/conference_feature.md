@@ -42,6 +42,7 @@ Schema for conferences
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
 `allow_shareable_link` | Indicates if the conference is reachable using a public link | `boolean()` | `false` | `false` |  
+`auto_record` | Automatically start recording when the number of participants meets the configured required minimum participants for recording (default minimum of two participants) | `boolean()` | `false` | `false` |  
 `base_profile_name` | name of base profile | `string()` |   | `false` |  
 `bridge_password` | the password used for a conference bridge | `string()` |   | `false` |  
 `bridge_username` | the username used for a conference bridge | `string()` |   | `false` |  
@@ -50,6 +51,7 @@ Key | Description | Type | Default | Required | Support Level
 `conference_numbers` | Defines conference numbers that can be used by members or moderators | `array(string())` | `[]` | `false` |  
 `controls` | controls | `object()` |   | `false` |  
 `domain` | domain | `string()` |   | `false` |  
+`endconf_grace_time` | Defines how much time all members have before the conference is terminated when the last member with endconf leaves in seconds | `integer(0..)` |   | `false` |  
 `flags.[]` |   | `string()` |   | `false` | `supported`
 `flags` | Flags set by external applications | `array(string())` |   | `false` | `supported`
 `focus` | This is a read-only property indicating the media server hosting the conference | `string()` |   | `false` |  

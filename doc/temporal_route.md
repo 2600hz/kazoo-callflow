@@ -12,7 +12,7 @@ Validator for the temporal_route callflow data object
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`action` | What action to perform | `string('menu' | 'enable' | 'disable' | 'reset')` |   | `false` |  
+`action` | What action to perform | `string('menu' \| 'enable' \| 'disable' \| 'reset')` |   | `false` |  
 `interdigit_timeout` | How long, in milliseconds, to wait for the next keypress | `integer()` |   | `false` |  
 `rule_set` | ID of the rule set | `string()` |   | `false` |  
 `rules.[]` |   | `string()` |   | `false` |  

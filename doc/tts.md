@@ -11,7 +11,7 @@ Validator for the TTS (Text-to-speech) callflow action
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
 `endless_playback` | Loop the media until canceled | `boolean()` |   | `false` |  
-`engine` | What TTS engine to use | `string('flite' | 'google' | 'ispeech' | 'voicefabric')` |   | `false` |  
+`engine` | What TTS engine to use | `string('flite' \| 'google' \| 'ispeech' \| 'voicefabric')` |   | `false` |  
 `language` | The language of the speaker | `string()` |   | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
 `terminators.[]` |   | `string()` |   | `false` |  

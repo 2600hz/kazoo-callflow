@@ -14,7 +14,7 @@ Key | Description | Type | Default | Required | Support Level
 `interdigit` | Increase to allow more time between DTMF presses | `integer()` |   | `false` |  
 `max_digits` | Maximum digits allowed when collecting destination number | `integer()` | `15` | `false` |  
 `pin` | PIN code to allow caller use this feature | `string()` | "" | `false` |  
-`preconnect_audio` | What to play for the caller before collecting the destination number | `string('dialtone' | 'ringing')` | `dialtone` | `false` |  
+`preconnect_audio` | What to play for the caller before collecting the destination number | `string('dialtone' \| 'ringing')` | `dialtone` | `false` |  
 `retries` | Maximum number of retries to collect PIN and/or destination number | `integer()` | `3` | `false` |  
 `ring_repeat_count` | How many times to repeat the ringing (if preconnect_audio is used) | `integer()` | `1` | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  

@@ -21,7 +21,7 @@ Key | Description | Type | Default | Required | Support Level
 `call_timeout` | How long to ring the callee | `integer()` | `30` | `false` |  
 `caller_greeting` | Greeting played to caller to inform her/him about name/purpose recording | `string()` | `Hi. Please state your name after the tone.` | `false` |  
 `caller_id_name` | Custom Caller ID Name to denote the doorman is calling | `string()` | `Doorman` | `false` |  
-`failover_strategy` | The failover strategy to use if the callee does not answer or hangs up without choosing an option | `string('hangup' | 'voicemail')` | `hangup` | `false` |  
+`failover_strategy` | The failover strategy to use if the callee does not answer or hangs up without choosing an option | `string('hangup' \| 'voicemail')` | `hangup` | `false` |  
 `id` | The {% BRAND_NAME %} device or user ID | `string()` |   | `true` |  
 `max_menu_attempts` | The max number of doorman menu repetitions in case of callee's wrong choice | `integer()` | `3` | `false` |  
 `origin` | Read-only setting if the call is recorded | `string()` | `callflow : cf_doorman` | `false` |  

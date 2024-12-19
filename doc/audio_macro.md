@@ -20,7 +20,7 @@ Validator for the audio_macro callflow data object
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
 `language` | The language of the speaker | `string()` |   | `false` |  
-`macros.[].macro` | the macro type to process | `string('play' | 'prompt' | 'say' | 'tts' | 'tone')` |   | `true` |  
+`macros.[].macro` | the macro type to process | `string('play' \| 'prompt' \| 'say' \| 'tts' \| 'tone')` |   | `true` |  
 `macros` | The audio macro data | `array(object())` | `[]` | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
 `terminators.[]` |   | `string()` |   | `false` |  
@@ -45,13 +45,13 @@ Validator for executing say commands
 
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
-`gender` | The gender of the speaker | `string('masculine' | 'feminine' | 'neuter')` |   | `false` |  
+`gender` | The gender of the speaker | `string('masculine' \| 'feminine' \| 'neuter')` |   | `false` |  
 `language` | The language of the speaker | `string()` |   | `false` |  
-`method` | The method to use when saying the text | `string('none' | 'pronounced' | 'iterated' | 'counted')` |   | `false` |  
+`method` | The method to use when saying the text | `string('none' \| 'pronounced' \| 'iterated' \| 'counted')` |   | `false` |  
 `terminators.[]` |   | `string()` |   | `false` |  
 `terminators` | What DTMF can terminate playback of the audio | `array(string())` | `["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]` | `false` |  
 `text` | Text to say | `string()` |   | `false` |  
-`type` | The type to use when saying the text | `string('number' | 'items' | 'persons' | 'messages' | 'currency' | 'time_measurement' | 'current_date' | 'current_time' | 'current_date_time' | 'telephone_number' | 'telephone_extension' | 'url' | 'ip_address' | 'e-mail_address' | 'postal_address' | 'account_number' | 'name_spelled' | 'name_phonetic' | 'short_date_time')` |   | `false` |  
+`type` | The type to use when saying the text | `string('number' \| 'items' \| 'persons' \| 'messages' \| 'currency' \| 'time_measurement' \| 'current_date' \| 'current_time' \| 'current_date_time' \| 'telephone_number' \| 'telephone_extension' \| 'url' \| 'ip_address' \| 'e-mail_address' \| 'postal_address' \| 'account_number' \| 'name_spelled' \| 'name_phonetic' \| 'short_date_time')` |   | `false` |  
 
 ### callflows.audio_macro.tone
 
@@ -89,7 +89,7 @@ Validator for the TTS (Text-to-speech) callflow action
 Key | Description | Type | Default | Required | Support Level
 --- | ----------- | ---- | ------- | -------- | -------------
 `endless_playback` | Loop the media until canceled | `boolean()` |   | `false` |  
-`engine` | What TTS engine to use | `string('flite' | 'google' | 'ispeech' | 'voicefabric')` |   | `false` |  
+`engine` | What TTS engine to use | `string('flite' \| 'google' \| 'ispeech' \| 'voicefabric')` |   | `false` |  
 `language` | The language of the speaker | `string()` |   | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
 `terminators.[]` |   | `string()` |   | `false` |  
