@@ -1,6 +1,6 @@
 # PBX with Callflows
 
-The callflow application handles the processing of [callflow JSON](../../crossbar/doc/callflows/) flows.
+The callflow application handles the processing of [Callflow JSON object](https://docs.2600hz.com/git/2600hz/kazoo-crossbar/doc/callflows/) flows.
 
 ## Structure of a callflow JSON flow
 

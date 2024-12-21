@@ -54,6 +54,6 @@ There are three strategies that can be chosen:
 Endpoints can be:
 * `device` - a single device will be added to the `ring group`
 * `user` - all devices of the user will be added to the `ring group`
-* `group` - all devices of a [group](https://docs.2600hz.com/dev/applications/crossbar/doc/groups/) will be added to the `ring group`
+* `group` - all devices of a [group](https://docs.2600hz.com/git/2600hz/kazoo-crossbar/doc/groups.md) will be added to the `ring group`
 
 Once all the endpoints have been resolved, the `strategy` will be applied to the resulting list of devices and the ring group will be executed.

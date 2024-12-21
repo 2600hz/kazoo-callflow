@@ -74,7 +74,7 @@ Key | Description | Type | Default | Required | Support Level
 ## List action mode
 
 In this method you have flexibility to define multiple Caller ID, each assign to a specific number using account's list. You can set both the Caller ID name and
-number in a document in database. This callflow's module use that information to set new Caller ID. You can create your list and list's entries using [List Crossbar API](../../crossbar/doc/lists.md).
+number in a document in database. This callflow's module use that information to set new Caller ID. You can create your list and list's entries using [List API](https://docs.2600hz.com/git/2600hz/kazoo-crossbar/doc/lists.md).
 
 This done by first getting group capture which populate by callflow automatically (feature code is removed from the beginning) then get a specific length of numbers starting from the beginning of the dialed number (by default 2 numbers). This number is it the key (or index) in a list of Caller ID entry list. For and example how this works, see the example section.
 
