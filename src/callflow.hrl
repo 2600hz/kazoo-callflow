@@ -38,6 +38,7 @@
 -define(LIST_BY_PATTERN, <<"callflows/listing_by_pattern">>).
 
 -define(NO_MATCH_CF, <<"no_match">>).
+-define(QUICKTOCALL_NUM, <<"quicktocall">>).
 
 -define(ALLOWED_BRANCH_DOC_TYPES, kapps_config:get_ne_binaries(?CF_CONFIG_CAT
                                                               ,<<"allowed_branch_doc_types">>
