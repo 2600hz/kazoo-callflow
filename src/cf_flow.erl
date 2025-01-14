@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Luis Azedo
 %%%
@@ -35,7 +35,49 @@
 
 -spec lookup(kapps_call:call()) -> lookup_ret().
 lookup(Call) ->
-    lookup(kapps_call:request_user(Call), kapps_call:account_id(Call)).
+    FlowDoc = kapps_call:custom_application_var(<<"flow_doc">>, Call),
+    FlowId = kapps_call:custom_application_var(<<"flow_id">>, Call),
+    case should_use_flow_from_call(Call) of
+        'true' -> maybe_flow_from_call(Call, FlowId, FlowDoc);
+        'false' -> lookup(kapps_call:request_user(Call), kapps_call:account_id(Call))
+    end.
+
+-spec maybe_flow_from_call(kapps_call:call(), kz_term:api_ne_binary(), kz_term:api_ne_binary()) -> lookup_ret().
+maybe_flow_from_call(Call, 'undefined', 'undefined') ->
+    lookup(kapps_call:request_user(Call), kapps_call:account_id(Call));
+maybe_flow_from_call(Call, 'undefined', EncodedFlowDoc) ->
+    lager:info("using flow doc from call"),
+    try
+        FlowDoc = kz_json:decode(base64:decode(EncodedFlowDoc)),
+        kz_json:is_not_empty(FlowDoc)
+    of
+        'true' ->
+            {'ok', FlowDoc, contains_no_match(FlowDoc)};
+        'false' ->
+            lager:error("invalid flow doc object, try looking up instead: ~p", [FlowDoc]),
+            maybe_flow_from_call(Call, 'undefined', 'undefined')
+    catch
+        _:_ ->
+            lager:error("invalid flow doc object, try looking up instead: ~p", [EncodedFlowDoc]),
+            maybe_flow_from_call(Call, 'undefined', 'undefined')
+    end;
+maybe_flow_from_call(Call, FlowId, EncodedFlowDoc) ->
+    lager:info("using flow id ~s from call", [FlowId]),
+    AccountId = kapps_call:account_id(Call),
+    HasFlowDoc = kz_term:is_not_empty(EncodedFlowDoc),
+    case return_callflow_doc(FlowId, AccountId) of
+        {'ok', _, _}=OK -> OK;
+        {'error', _E} when HasFlowDoc ->
+            lager:error("error getting callflow ~s, maybe trying flow doc from call: ~p", [FlowId, _E]),
+            maybe_flow_from_call(Call, 'undefined', EncodedFlowDoc);
+        {'error', _E} ->
+            lager:error("error getting callflow ~s, try looking up instead: ~p", [FlowId, _E]),
+            maybe_flow_from_call(Call, 'undefined', 'undefined')
+    end.
+
+-spec should_use_flow_from_call(kapps_call:call()) -> boolean().
+should_use_flow_from_call(Call) ->
+    kapps_call:request_user(Call) =:= ?QUICKTOCALL_NUM.
 
 -spec lookup(kz_term:ne_binary(), kz_term:ne_binary()) -> lookup_ret().
 lookup(Number, AccountId) when not is_binary(Number) ->
