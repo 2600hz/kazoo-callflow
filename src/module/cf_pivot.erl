@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2023, 2600Hz
+%%% @copyright (C) 2012-2025, 2600Hz
 %%% @doc Accept third-party `callflow' actions (or TwiML)
 %%% @author James Aimonetti
 %%%
@@ -35,6 +35,7 @@
 %%------------------------------------------------------------------------------
 -spec handle(kz_json:object(), kapps_call:call()) -> any().
 handle(Data, Call) ->
+    Serverless = kz_json:get_json_value(<<"serverless">>, Data),
     Prop = props:filter_empty(
              [{<<"Call">>, kapps_call:to_json(Call)}
              ,{<<"CDR-URI">>, kz_json:get_ne_binary_value(<<"cdr_url">>, Data)}
@@ -45,11 +46,26 @@ handle(Data, Call) ->
              ,{<<"Request-Timeout">>, kz_json:get_integer_value(<<"req_timeout_ms">>, Data)}
              ,{<<"Custom-Request-Headers">>, kz_json:get_json_value(<<"custom_request_headers">>, Data)}
              ,{<<"Voice-URI">>, kz_json:get_ne_binary_value(<<"voice_url">>, Data)}
+             ,{<<"Flow-Doc">>, flow_doc(Serverless)}
+             ,{<<"Flow-Type">>, kz_json:get_ne_binary_value(<<"flow_type">>, Serverless)}
              | kz_api:default_headers(?APP_NAME, ?APP_VERSION)
              ]),
     kapi_pivot:publish_req(Prop),
     lager:info("published pivot request"),
     wait_for_pivot(Data, Call).
+
+-spec flow_doc(kz_json:object()) -> kz_term:api_ne_binary().
+flow_doc(Data) ->
+    Thing = kz_json:get_ne_value(<<"flow_doc">>, Data),
+    case {kz_json:is_json_object(Thing), kz_term:is_ne_binary(Thing)} of
+        {'true', _} ->
+            kz_json:encode(Thing);
+        {'false', 'true'} ->
+            Thing;
+        _ ->
+            lager:debug("invalid pivot flow_doc, expected json or none empty binary"),
+            'undefined'
+    end.
 
 -spec wait_for_pivot(kz_json:object(), kapps_call:call()) -> any().
 wait_for_pivot(Data, Call) ->
