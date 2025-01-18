@@ -28,7 +28,7 @@ Callflows has dozens of unique actions, each with their own attribute schemas. S
 
 ### Children
 
-The default child key, `"_"` is used when no other matching child keys are found. For instance, in a `user`->`voicemail` callflow:
+The default or 'wildcard' child key, `"_"` is used when no other matching child keys are found. For instance, in a `user`->`voicemail` callflow:
 
 ```json
 {
@@ -49,7 +49,7 @@ When the `children` key is omitted or has no child branches, the call will gener
 
 When bridging the incoming leg, you can add child branches based on the SIP response code or reason to have custom handling of various failure scenarios.
 
-For instance, you can handle `404` user not found errors differently than `486` user busy errors (and still maintain the default behaviour with `"_"` if a different error occurred:
+For instance, you can handle `404` user not found errors differently than `486` user busy errors (and still maintain the default behaviour with `"_"`) if a different error occurred:
 
 ```json
 {
