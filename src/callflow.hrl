@@ -51,8 +51,6 @@
 
 -define(DEFAULT_TIMEOUT_S, ?BRIDGE_DEFAULT_SYSTEM_TIMEOUT_S).
 
--define(MANUAL_PRESENCE_DOC, <<"manual_presence">>).
-
 -define(CACHE_NAME, 'callflow_cache').
 
 -define(RESTRICTED_ENDPOINT_KEY, <<"Restricted-Endpoint-ID">>).

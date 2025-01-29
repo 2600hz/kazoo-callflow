@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2012-2023, 2600Hz
+%%% @copyright (C) 2012-2025, 2600Hz
 %%% @doc Allows to control presence feature by calling this Callflow.
 %%%
 %%% <h4>Data options:</h4>
@@ -53,12 +53,7 @@ update_presence(<<"busy">>, PresenceId, Call) ->
 
 -spec update_doc(kapps_call:call(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
 update_doc(Call, <<PresenceId/binary>>, <<State/binary>>) ->
-    Update = [{[PresenceId], State}],
-    UpdateOptions = [{'update', Update}
-                    ,{'ensure_saved', 'true'}
-                    ,{'should_create', 'true'}
-                    ],
-    case kz_datamgr:update_doc(kapps_call:account_db(Call), ?MANUAL_PRESENCE_DOC, UpdateOptions) of
+    case kzd_presence:update_presence(kapps_call:account_id(Call), PresenceId, State) of
         {'ok', _} ->
             lager:debug("updated ~s to ~s", [PresenceId, State]);
         {'error', _E} ->
