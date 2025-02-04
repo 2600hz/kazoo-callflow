@@ -2,7 +2,8 @@
 
 ### About Record Caller
 
-Record the media stream, sending it to a configured URL on call completion.
+Record the media stream, sending it to a configured URL on call completion. To record both caller
+and callee, use [record call](./record_call.md).
 
 #### Schema
 
@@ -31,4 +32,27 @@ Key | Description | Type | Default | Required | Support Level
 `url` | The URL to use when sending the recording for storage | `string(5..)` |   | `false` |  
 
 
+## Examples
 
+### Record only the caller
+
+ Useful for voicemail or recording menu prompts.
+
+```json
+{
+    "module": "say",
+    "data": {
+        "text": "Please leave your message after the beep"
+    },
+    "children": {
+        "_": {
+            "module": "record_caller",
+            "data": {
+                "format": "mp3",
+                "url": "http://my.recording.server/voicemail/{ACCOUNT_ID}/{BOX_ID}",
+                "time_limit":360
+            }
+        }
+    }
+}
+```

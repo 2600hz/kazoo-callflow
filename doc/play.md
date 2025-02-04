@@ -1,8 +1,9 @@
-## Play
+# Play
 
-### About Play
+## About Play
 
-Play media to the caller
+Play media to the caller, either from a file hosted in the {% BRAND_NAME %} account, or accessible via a URI.
+
 
 #### Schema
 
@@ -10,15 +11,15 @@ Validator for the play callflow data object
 
 
 
-Key | Description | Type | Default | Required | Support Level
---- | ----------- | ---- | ------- | -------- | -------------
-`answer` | Whether to answer an unanswered call | `boolean()` |   | `false` |  
-`endless_playback` | Loop the media continuously | `boolean()` | `false` | `false` |  
-`id` | Media ID or URL of the media to play | `string()` |   | `false` |  
-`loop_count` | How many times to loop the media | `integer(1..)` |   | `false` |  
-`skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
-`terminators.[]` |   | `string()` |   | `false` |  
-`terminators` | What DTMF can terminate playback of the audio | `array(string())` | `["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]` | `false` |  
+| Key                | Description                                                                                 | Type              | Default                                                        | Required | Support Level |
+|--------------------|---------------------------------------------------------------------------------------------|-------------------|----------------------------------------------------------------|----------|---------------|
+| `answer`           | Whether to answer an unanswered call                                                        | `boolean()`       |                                                                | `false`  |
+| `endless_playback` | Loop the media continuously                                                                 | `boolean()`       | `false`                                                        | `false`  |
+| `id`               | Media ID or URL of the media to play                                                        | `string()`        |                                                                | `false`  |
+| `loop_count`       | How many times to loop the media                                                            | `integer(1..)`    |                                                                | `false`  |
+| `skip_module`      | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()`       |                                                                | `false`  |
+| `terminators.[]`   |                                                                                             | `string()`        |                                                                | `false`  |
+| `terminators`      | What DTMF can terminate playback of the audio                                               | `array(string())` | `["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]` | `false`  |
 
 
 
@@ -34,3 +35,29 @@ If you want to play the media a number of times, include `loop_count` to do so.
 Endless playback is exactly that - playback of the media will not stop on the channel until the channel is hung up. The media is uninterruptible.
 
 `endless_playback=true` takes precedence over `loop_count>0` if both are included.
+
+## Examples
+
+### Play sample
+
+The initial {% BRAND_NAME %} JSON to play a file could look something like:
+
+```php
+{
+    "module": "play",
+    "data": {
+        "id": "media_id"
+    },
+    "children": {
+        "_": {
+            "module": "play",
+            "data":{
+                "id": "http://some.file.server/some/file.mp3"
+            },
+            "children": {}
+        }
+    }
+}
+```
+
+Here we see two play actions, one that uses a media file hosted by {% BRAND_NAME %} and one that fetches the file from an HTTP server.

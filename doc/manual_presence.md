@@ -1,5 +1,8 @@
 ## Manual Presence
 
+`manual_presence` is typically used within 
+[Pivot](https://docs.2600hz.com/git/2600hz/kazoo-pivot/doc/README.md).
+
 ### About Manual Presence
 
 #### Schema

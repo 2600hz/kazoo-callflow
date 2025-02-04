@@ -1,8 +1,10 @@
-## Menu
+# Menu
 
-### About Menu
+## About Menu
 
-Also known as IVR. Play a prompt and branch based on caller DTMF.
+Also known as IVR. Play a prompt and branch based on caller DTMF. Menus are configured by 
+[API](https://docs.2600hz.com/git/2600hz/crossbar/doc/menus.md). In a flow, configured menus
+are used with the 'id' key.
 
 #### Schema
 
