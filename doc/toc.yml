@@ -1,9 +1,11 @@
 - '!q:doc/README.md'
 - "Callflow Actions":
+    - doc/branch_bnumber.md
     - doc/branch_variable.md #onstensibly a more updated version of branch_variable.md?
     - doc/callflow.md
     - doc/call_forward.md
     - doc/call_waiting.md
+    - doc/check_cid.md
     - doc/collect_dtmf.md
     - doc/conference.md
     - doc/device.md
@@ -29,6 +31,7 @@
     - doc/page_group.md
     - '!f:doc/pivot.md'
     - doc/play.md
+    - doc/preflow.md
     - doc/prepend_cid.md
     - doc/privacy.md
     - doc/record_caller.md # I suspect this one is off?
