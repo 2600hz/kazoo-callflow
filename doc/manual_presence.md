@@ -1,9 +1,8 @@
-## Manual Presence
+# Manual Presence
 
-`manual_presence` is typically used within 
-[Pivot](https://docs.2600hz.com/git/2600hz/kazoo-pivot/doc/README.md).
+## About Manual Presence
 
-### About Manual Presence
+Set custom presence updates during flows.
 
 #### Schema
 
@@ -22,10 +21,24 @@ Key | Description | Type | Default | Required | Support Level
 
 
 
-#### Status
+### Status
 
 There are three statuses that may be used in the update:
 
 * `idle` - Typically solid green, for when the `presence_id` has no active calls
 * `ringing` - Typically blinking red, for when an incoming call is occurring
 * `busy` - Typically solid red, for when an incoming call has been answered
+
+## Examples
+
+```json
+{
+    "module": "manual_presence",
+    "data": {
+        "presence_id": "username",
+        "status": "ringing"
+    }
+}
+```
+
+Do note, `presence_id` without an `@realm.com` will be suffixed with the account's realm.

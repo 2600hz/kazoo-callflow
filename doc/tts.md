@@ -4,8 +4,8 @@ Speak in calls with text-to-speech
 
 ## About TTS
 
-Speak in calls automatically using tts engines. In order to use tts, the account must have an engine configured. {% BRAND_NAME %} has Flite configured out of the box. For different engines, see 
-[this tutorial](https://docs.2600hz.com/git/2600hz/docs-sysadmin/doc/config/adding-ispeech-tts.md) for adding a tts engine.
+Speak in calls automatically using tts engines. In order to use tts, the account must have an engine configured. {% BRAND_NAME %} has Flite configured out of the box. See
+[this tutorial](https://docs.2600hz.com/git/2600hz/docs-sysadmin/doc/config/adding-ispeech-tts.md) for adding a different tts engine.
 
 #### Schema
 
@@ -33,7 +33,7 @@ This example will use the default TTS engine to speak the text and then hang up.
 {
     "module": "tts",
     "data": {
-        "text": "Pivot is pretty awesome. Have a great day."
+        "text": "{% BRAND_NAME %} is pretty awesome. Have a great day."
     }
 }
 ```

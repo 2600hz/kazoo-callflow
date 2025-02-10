@@ -40,7 +40,7 @@ Key | Description | Type | Default | Required | Support Level
 
 ```json
 {
-    "module": "say",
+    "module": "tts",
     "data": {
         "text": "Please leave your message after the beep"
     },
