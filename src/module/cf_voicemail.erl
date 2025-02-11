@@ -1999,8 +1999,15 @@ get_mailbox_profile(Data, Call) ->
             build_mailbox_profile(Data, Call, AccountId, MailboxJObj);
         {'error', R} ->
             lager:info("failed to load voicemail box ~s, ~p", [Id, R]),
-            #mailbox{}
+            build_empty_mailbox_profile(AccountId)
     end.
+
+build_empty_mailbox_profile(AccountId) ->
+    {'ok', AccountJObj} = kzd_accounts:fetch(AccountId),
+
+    DefaultLanguage = kz_media_util:default_prompt_language(),
+    AccountLanguage = kzd_accounts:language(AccountJObj, DefaultLanguage),
+    #mailbox{language = AccountLanguage}.
 
 build_mailbox_profile(Data, Call, AccountId, MailboxJObj) ->
     MailboxId = kz_doc:id(MailboxJObj),
