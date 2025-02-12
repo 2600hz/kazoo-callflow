@@ -230,7 +230,7 @@ mwi_query(JObj) ->
 maybe_vm_mwi_resp('undefined', _AccountDb) -> 'ok';
 maybe_vm_mwi_resp(<<VMNumber/binary>>, AccountDb) ->
     case mailbox(AccountDb, VMNumber) of
-        {'ok', Doc} -> kvm_mwi:notify_vmbox(AccountDb, kz_doc:id(Doc));
+        {'ok', Doc} -> kvm_mwi:notify_vmbox(AccountDb, kz_doc:id(Doc), 'true');
         {'error', _} -> mwi_resp(VMNumber, AccountDb)
     end.
 
