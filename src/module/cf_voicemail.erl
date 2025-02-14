@@ -2156,7 +2156,7 @@ owner_info(AccountId, MailboxJObj, 'undefined') ->
     ,kz_media_util:prompt_language(AccountId)
     };
 owner_info(AccountId, MailboxJObj, OwnerId) ->
-    AccountLanguage = kz_media_util:prompt_language(AccountId)
+    AccountLanguage = kz_media_util:prompt_language(AccountId),
 
     case kz_datamgr:open_cache_doc(AccountId, OwnerId) of
         {'ok', OwnerJObj} ->
