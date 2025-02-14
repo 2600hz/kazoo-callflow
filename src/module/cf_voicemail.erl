@@ -1999,7 +1999,7 @@ get_mailbox_profile(Data, Call) ->
             build_mailbox_profile(Data, Call, AccountId, MailboxJObj);
         {'error', R} ->
             lager:info("failed to load voicemail box ~s, ~p", [Id, R]),
-            #mailbox{}
+            #mailbox{language = kapps_call:language(Call)}
     end.
 
 build_mailbox_profile(Data, Call, AccountId, MailboxJObj) ->
@@ -2151,19 +2151,12 @@ owner_info(AccountId, MailboxJObj) ->
 -spec owner_info(kz_term:ne_binary(), kz_json:object(), kz_term:api_binary()) ->
           {kz_term:api_binary(), kz_term:api_binary(), kz_term:ne_binary()}.
 owner_info(AccountId, MailboxJObj, 'undefined') ->
-    {'ok', AccountJObj} = kzd_accounts:fetch(AccountId),
-
-    DefaultLanguage = kz_media_util:default_prompt_language(),
-
     {kz_json:get_ne_value(?RECORDED_NAME_KEY, MailboxJObj)
     ,'undefined'
-    ,kzd_accounts:language(AccountJObj, DefaultLanguage)
+    ,kz_media_util:prompt_language(AccountId)
     };
 owner_info(AccountId, MailboxJObj, OwnerId) ->
-    {'ok', AccountJObj} = kzd_accounts:fetch(AccountId),
-
-    DefaultLanguage = kz_media_util:default_prompt_language(),
-    AccountLanguage = kzd_accounts:language(AccountJObj, DefaultLanguage),
+    AccountLanguage = kz_media_util:prompt_language(AccountId),
 
     case kz_datamgr:open_cache_doc(AccountId, OwnerId) of
         {'ok', OwnerJObj} ->
