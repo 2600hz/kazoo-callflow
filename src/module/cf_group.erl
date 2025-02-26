@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -71,9 +71,10 @@ attempt_endpoints(JObj, Data, Call0, Endpoints) ->
                  kz_json:find(<<"ringback">>, [JObj, Data])
                 ),
     IgnoreEarlyMedia = ignore_early_media(Data, Call),
+    FailOnSingleReject = kz_json:get_value_type(<<"fail_on_single_reject">>, fun kz_api_term:is_boolean_or_ne_binaries/1, Data),
     lager:info("attempting group of ~b members with strategy ~s", [length(Endpoints), Strategy]),
     _ = kapps_call_command:b_answer(Call),
-    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, IgnoreEarlyMedia, Ringback, 'undefined', IgnoreForward, set_presence(Data, Call)) of
+    case kapps_call_command:b_bridge(Endpoints, Timeout, Strategy, IgnoreEarlyMedia, Ringback, 'undefined', IgnoreForward, FailOnSingleReject, set_presence(Data, Call)) of
         {'ok', Reply} ->
             lager:info("completed successful bridge to the group - call finished normally"),
             after_success_bridge(Call, kz_call_event:channel_answer_state(Reply), should_hard_stop(Call, Data));
