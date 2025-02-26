@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -80,15 +80,15 @@ should_ignore_early_media(<<"simultaneous">>, _Endpoints) -> 'true';
 should_ignore_early_media(_Strategy, Endpoints) ->
     kz_endpoints:ignore_early_media(Endpoints).
 
-should_fail_on_single_reject(Data, Call) ->
+fail_on_single_reject(Data, Call) ->
     Default = kapps_call:custom_channel_var(<<"Require-Fail-On-Single-Reject">>, Call),
-    kz_json:is_true(<<"fail_on_single_reject">>, Data, Default).
+    kz_json:get_value_type(<<"fail_on_single_reject">>, fun kz_api_term:is_boolean_or_ne_binaries/1, Data, Default).
 
 -spec bridge(kz_json:object(), kapps_call:call(), [kzd_endpoint:endpoint()]) -> 'ok'.
 bridge(Data, Call0, Endpoints) ->
     Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
 
-    FailOnSingleReject = should_fail_on_single_reject(Data, Call),
+    FailOnSingleReject = fail_on_single_reject(Data, Call),
     Strategy = get_strategy(Data),
 
     IgnoreEarlyMedia = should_ignore_early_media(Strategy, Endpoints),

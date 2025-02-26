@@ -14,8 +14,9 @@ Key | Description | Type | Default | Required | Support Level
 `can_text_self` | Toggle whether devices of the same owner can text each other | `boolean()` |   | `false` | `alpha`
 `custom_sip_headers` | KV Object where the name is the SIP header and the value is the SIP field | `object()` |   | `false` |  
 `delay` | How long to delay ringing the device, in seconds | `integer()` | `0` | `false` |  
-`dial_strategy` | Dial strategy for the device | `string('simultaneous' | 'single')` | `simultaneous` | `false` |  
-`fail_on_single_reject` | If any leg rejects the call, cancel all other legs | `boolean()` |   | `false` |  
+`dial_strategy` | Dial strategy for the device | `string('simultaneous' \| 'single')` | `simultaneous` | `false` |  
+`fail_on_single_reject.[]` |   | `string()` |   | `false` |  
+`fail_on_single_reject` | If any leg rejects the call, cancel all other legs | `boolean() | array(string())` |   | `false` |  
 `id` | Device ID | `string()` |   | `false` |  
 `skip_module` | When set to true this callflow action is skipped, advancing to the wildcard branch (if any) | `boolean()` |   | `false` |  
 `static_invite` | Override the SIP Username | `string()` |   | `false` |  
