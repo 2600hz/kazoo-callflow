@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -112,7 +112,7 @@ repeat(_Data, _Call, _N, 'fail') ->
 attempt_endpoints(Endpoints, Data, Call0) ->
     Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
 
-    FailOnSingleReject = kz_json:is_true(<<"fail_on_single_reject">>, Data, 'undefined'),
+    FailOnSingleReject = kz_json:get_value_type(<<"fail_on_single_reject">>, fun kz_api_term:is_boolean_or_ne_binaries/1, Data),
     Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
     Strategy = freeswitch_strategy(Data),
     Ringback = kz_json:get_ne_binary_value(<<"ringback">>, Data),

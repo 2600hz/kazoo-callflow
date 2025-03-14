@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2024, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc Check/compose Voicemail messages.
 %%%
 %%% <h4>Data options:</h4>
@@ -1999,7 +1999,7 @@ get_mailbox_profile(Data, Call) ->
             build_mailbox_profile(Data, Call, AccountId, MailboxJObj);
         {'error', R} ->
             lager:info("failed to load voicemail box ~s, ~p", [Id, R]),
-            #mailbox{}
+            #mailbox{language = kapps_call:language(Call)}
     end.
 
 build_mailbox_profile(Data, Call, AccountId, MailboxJObj) ->
@@ -2014,7 +2014,7 @@ build_mailbox_profile(Data, Call, AccountId, MailboxJObj) ->
                     orelse ('cf_device' =:= LastAct)
                    ),
 
-    {NameMediaId, OwnerId} = owner_info(AccountId, MailboxJObj),
+    {NameMediaId, OwnerId, OwnerLanguage} = owner_info(AccountId, MailboxJObj),
 
     MaxMessageCount = max_message_count(Call),
     MsgCount = kvm_messages:count(kapps_call:account_id(Call), MailboxId),
@@ -2027,8 +2027,6 @@ build_mailbox_profile(Data, Call, AccountId, MailboxJObj) ->
     AfterNotifyAction = after_notify_action(MailboxJObj),
     AfterForwardAction = after_forward_action(MailboxJObj),
     IsFfRwEnabled = is_ff_rw_enabled(MailboxJObj),
-
-    {'ok', AccountDoc} = kzd_accounts:fetch(AccountId),
 
     #mailbox{mailbox_id = MailboxId
             ,mailbox_doc = MailboxJObj
@@ -2090,7 +2088,7 @@ build_mailbox_profile(Data, Call, AccountId, MailboxJObj) ->
             ,forward_type = kzd_vmboxes:vm_message_forward_type(MailboxJObj)
             ,oldest_message_first = kzd_vmboxes:oldest_message_first(MailboxJObj)
             ,operator_number = kzd_vmboxes:operator_number(MailboxJObj)
-            ,language = kzd_accounts:language(AccountDoc)
+            ,language = OwnerLanguage
             }.
 
 -spec should_require_pin(kz_json:object()) -> boolean().
@@ -2146,23 +2144,32 @@ max_message_count(Call) ->
     end.
 
 -spec owner_info(kz_term:ne_binary(), kz_json:object()) ->
-          {kz_term:api_binary(), kz_term:api_binary()}.
+          {kz_term:api_binary(), kz_term:api_binary(), kz_term:ne_binary()}.
 owner_info(AccountId, MailboxJObj) ->
     owner_info(AccountId, MailboxJObj, kz_json:get_ne_value(<<"owner_id">>, MailboxJObj)).
 
 -spec owner_info(kz_term:ne_binary(), kz_json:object(), kz_term:api_binary()) ->
-          {kz_term:api_binary(), kz_term:api_binary()}.
-owner_info(_AccountId, MailboxJObj, 'undefined') ->
+          {kz_term:api_binary(), kz_term:api_binary(), kz_term:ne_binary()}.
+owner_info(AccountId, MailboxJObj, 'undefined') ->
     {kz_json:get_ne_value(?RECORDED_NAME_KEY, MailboxJObj)
     ,'undefined'
+    ,kz_media_util:prompt_language(AccountId)
     };
 owner_info(AccountId, MailboxJObj, OwnerId) ->
+    AccountLanguage = kz_media_util:prompt_language(AccountId),
+
     case kz_datamgr:open_cache_doc(AccountId, OwnerId) of
         {'ok', OwnerJObj} ->
-            {kz_json:find(?RECORDED_NAME_KEY, [OwnerJObj, MailboxJObj]), OwnerId};
+            {kz_json:find(?RECORDED_NAME_KEY, [OwnerJObj, MailboxJObj])
+            ,OwnerId
+            ,kzd_users:language(OwnerJObj, AccountLanguage)
+            };
         {'error', 'not_found'} ->
             lager:info("owner ~s no longer exists", [OwnerId]),
-            {kz_json:get_ne_value(?RECORDED_NAME_KEY, MailboxJObj), 'undefined'}
+            {kz_json:get_ne_value(?RECORDED_NAME_KEY, MailboxJObj)
+            ,'undefined'
+            ,AccountLanguage
+            }
     end.
 
 %%------------------------------------------------------------------------------

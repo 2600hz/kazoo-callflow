@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -154,7 +154,7 @@ bridge_to_endpoints(Data, Call0, [_|_]=Endpoints) ->
     %% maybe start recording on inbound leg
     Call = cf_util:maybe_start_recording_to(Call0, <<"onnet">>),
 
-    FailOnSingleReject = kz_json:get_binary_boolean(<<"fail_on_single_reject">>, Data),
+    FailOnSingleReject = kz_json:get_value_type(<<"fail_on_single_reject">>, fun kz_api_term:is_boolean_or_ne_binaries/1, Data),
     Timeout = kz_json:get_integer_value(<<"timeout">>, Data, ?DEFAULT_TIMEOUT_S),
     IgnoreEarlyMedia = kz_endpoints:ignore_early_media(Endpoints),
     Strategy = kz_json:get_ne_binary_value(<<"dial_strategy">>, Data, <<"simultaneous">>),
