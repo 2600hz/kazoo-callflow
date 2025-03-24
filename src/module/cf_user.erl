@@ -138,9 +138,16 @@ stop(Call, _) -> cf_exe:stop(Call).
 -spec maybe_handle_bridge_failure(kz_json:object(), kapps_call:call(), kz_term:api_ne_binary(), bridge_failure_cause()) -> 'ok'.
 maybe_handle_bridge_failure(_Data, Call, <<"hangup">>, _Reason) ->
     cf_exe:hard_stop(Call);
-maybe_handle_bridge_failure(Data, Call, AppState, Reason) ->
-    EndpointId = kz_doc:id(Data),
-    maybe_handle_bridge_failure(Data, Call, AppState, Reason, kz_endpoint:get(EndpointId, Call)).
+maybe_handle_bridge_failure(Data, Call, AppState, {fail, JObj} = Reason) ->
+    case kapps_call:is_call_forward(Call)
+        andalso should_stop_on_forwarded_call(Data, Call)
+    of
+        true ->
+            cf_exe:soft_stop(Call, kz_call_event:application_response(JObj));
+        false ->
+            EndpointId = kz_doc:id(Data),
+            maybe_handle_bridge_failure(Data, Call, AppState, Reason, kz_endpoint:get(EndpointId, Call))
+    end.
 
 maybe_handle_bridge_failure(_Data, Call, _AppState, Reason, {'error', _E}) ->
     lager:info("failed to get endpoint for failure cfwd: ~p", [_E]),
@@ -200,3 +207,8 @@ is_context_flag({K, V}) ->
         'true' -> {'true', K};
         'false' -> 'false'
     end.
+
+-spec should_stop_on_forwarded_call(kz_json:object(), kapps_call:call()) -> boolean().
+should_stop_on_forwarded_call(Data, Call) ->
+    kz_json:is_true(<<"stop_on_failed_forwarded_call">>, Data, false)
+        orelse kz_app_config:get_is_true({?APP, kapps_call:account_id(Call)}, <<"stop_on_failed_forwarded_call">>, true).
