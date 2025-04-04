@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2013-2023, 2600Hz
+%%% @copyright (C) 2013-2025, 2600Hz
 %%% @doc Try to branch based on the value of a variable.
 %%%
 %%% <h4>Data options:</h4>
@@ -54,10 +54,10 @@ handle(Data, Call) ->
 %%------------------------------------------------------------------------------
 -spec maybe_branch_to_named_child(variable_key(), kapps_call:call()) -> 'ok'.
 maybe_branch_to_named_child('undefined', Call) ->
-    lager:info("trying '_'"),
+    lager:info("trying default branch '_'"),
     cf_exe:continue(Call);
 maybe_branch_to_named_child(ChildName, Call) ->
-    lager:info("trying '~s'", [ChildName]),
+    lager:info("trying branch '~s'", [ChildName]),
     cf_exe:continue(ChildName, Call).
 
 %%------------------------------------------------------------------------------
@@ -67,7 +67,7 @@ maybe_branch_to_named_child(ChildName, Call) ->
 -spec get_child_name(kz_term:ne_binary(), variable_key(), kapps_call:call(), kz_term:api_ne_binary()) ->
           kz_term:api_ne_binary().
 get_child_name(<<"doc">>, Variable, Call, Id) ->
-    lager:info("looking for variable '~p' value in doc ~p to find next callflow branch", [Variable, Id]),
+    lager:info("looking for variable '~p' value in doc ~s to find next callflow branch", [Variable, Id]),
     find_child_in_static_doc(Variable, Call, Id);
 get_child_name(Scope, Variable, Call, _Id) ->
     lager:info("looking for variable '~p' value in scope '~s' to find next callflow branch", [Variable, Scope]),
@@ -89,8 +89,9 @@ find_child_in_scope(<<"custom_channel_vars">>, Variable, Call) ->
     find_child_in_branch(ChildName, Call);
 find_child_in_scope(<<"account">>, Variable, Call) ->
     find_child_in_doc(kapps_call:account_id(Call), Variable, Call);
-find_child_in_scope(Scope, Variable, Call) when Scope =:= <<"user">>;
-                                                Scope =:= <<"device">> ->
+find_child_in_scope(Scope, Variable, Call)
+  when Scope =:= <<"user">>
+       orelse Scope =:= <<"device">> ->
     case kapps_call:authorizing_type(Call) of
         <<"device">> when Scope =:= <<"user">> ->
             find_child_in_doc(device_owner(Call), Variable, Call);
@@ -147,10 +148,10 @@ find_child_in_doc(DocId, Variable, Call) ->
 -spec find_child_in_static_doc(variable_key(), kapps_call:call(), kz_term:api_ne_binary()) ->
           kz_term:api_ne_binary().
 find_child_in_static_doc(_Variable, _Call, 'undefined') ->
-    lager:debug("could not find document for user with undefined doc id"),
+    lager:info("could not find document for call with undefined doc id"),
     'undefined';
 find_child_in_static_doc(Variable, Call, DocId) ->
-    lager:info("fetch doc ~p from db ~p", [DocId, kapps_call:account_db(Call)]),
+    lager:info("fetching  doc ~s from db ~s", [DocId, kapps_call:account_db(Call)]),
     case ensure_permitted_doc(kz_datamgr:open_cache_doc(kapps_call:account_db(Call), DocId)) of
         'undefined' ->
             lager:debug("failed to open user doc ~s in account ~s", [DocId, kapps_call:account_id(Call)]),
@@ -170,11 +171,11 @@ ensure_permitted_doc({'ok', JObj}) ->
     case lists:member(Type, ?ALLOWED_BRANCH_DOC_TYPES) of
         'true' -> JObj;
         'false' ->
-            lager:error("invalid type ~p in doc ~p", [Type, kz_doc:id(JObj)]),
+            lager:error("invalid type ~s in doc ~s/~s", [Type, kz_doc:id(JObj), kz_doc:account_id(JObj)]),
             'undefined'
     end;
-ensure_permitted_doc({'error', _}) ->
-    lager:error("failed to open doc"),
+ensure_permitted_doc({'error', _E}) ->
+    lager:info("failed to open doc: ~p", [_E]),
     'undefined'.
 
 %%------------------------------------------------------------------------------
@@ -205,7 +206,7 @@ find_child_in_branch(ChildName, Call, Keys) ->
             find_child_in_branch(Bin, Call, Keys)
     catch
         _:_ ->
-            lager:info("failed to convert none binary value ~p to binary", [ChildName]),
+            lager:info("failed to convert non-binary value ~p to binary", [ChildName]),
             'undefined'
     end.
 
@@ -248,11 +249,10 @@ maybe_hotdesked_device(Doc) ->
 normalize_variable('undefined') ->
     'undefined';
 normalize_variable(Variable) when is_list(Variable) ->
-    screen_variable(lists:reverse([kz_json:normalize_key(V)
-                                   || V <- Variable,
-                                      not kz_term:is_empty(V)
-                                  ]
-                                 )
+    screen_variable([kz_json:normalize_key(V)
+                     || V <- Variable,
+                        not kz_term:is_empty(V)
+                    ]
                    );
 normalize_variable(<<Variable/binary>>) ->
     normalize_variable(binary:split(Variable, <<".">>, ['global']));
