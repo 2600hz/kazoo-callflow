@@ -2153,10 +2153,10 @@ owner_info(AccountId, MailboxJObj) ->
 owner_info(AccountId, MailboxJObj, 'undefined') ->
     {kz_json:get_ne_value(?RECORDED_NAME_KEY, MailboxJObj)
     ,'undefined'
-    ,kz_media_util:prompt_language(AccountId)
+    ,get_account_prompt_language(AccountId)
     };
 owner_info(AccountId, MailboxJObj, OwnerId) ->
-    AccountLanguage = kz_media_util:prompt_language(AccountId),
+    AccountLanguage = get_account_prompt_language(AccountId),
 
     case kz_datamgr:open_cache_doc(AccountId, OwnerId) of
         {'ok', OwnerJObj} ->
@@ -2171,6 +2171,11 @@ owner_info(AccountId, MailboxJObj, OwnerId) ->
             ,AccountLanguage
             }
     end.
+
+get_account_prompt_language(AccountId) ->
+    {'ok', AccountJObj} = kzd_accounts:fetch(AccountId),
+    DefaultLanguage = kz_media_util:default_prompt_language(),
+    kzd_accounts:language(AccountJObj, DefaultLanguage).
 
 %%------------------------------------------------------------------------------
 %% @doc
