@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc Callflow resource.
 %%%
 %%% <h4>Data options:</h4>
@@ -118,7 +118,7 @@ handle_bridge_failure('true', Cause, _Code, Call) ->
                              ,kz_json:get_value(<<"Code">>, Response)
                              ,Cause
                              ),
-    cf_exe:hard_stop(Call).
+    cf_exe:soft_stop(Call, Cause).
 
 %%------------------------------------------------------------------------------
 %% @doc

@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2010-2024, 2600Hz
+%%% @copyright (C) 2010-2025, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%%
@@ -24,6 +24,7 @@
 -export([branch/2]).
 -export([stop/1, stop/2]).
 -export([hard_stop/1]).
+-export([soft_stop/1, soft_stop/2]).
 -export([transfer/1]).
 -export([control_usurped/1]).
 -export([channel_destroyed/1, channel_destroyed/2]).
@@ -203,6 +204,17 @@ hard_stop(Srv) when is_pid(Srv) ->
 hard_stop(Call) ->
     Srv = cf_exe_pid(Call),
     hard_stop(Srv).
+
+-spec soft_stop(kapps_call:call() | pid(), kz_term:api_ne_binary()) -> 'ok'.
+soft_stop(Srv, Cause) when is_pid(Srv) ->
+    gen_server:cast(Srv, {'soft_stop', Cause});
+soft_stop(Call, Cause) ->
+    Srv = cf_exe_pid(Call),
+    soft_stop(Srv, Cause).
+
+-spec soft_stop(kapps_call:call() | pid()) -> 'ok'.
+soft_stop(Srv) ->
+    soft_stop(Srv, undefined).
 
 -spec transfer(kapps_call:call() | pid()) -> 'ok'.
 transfer(Srv) when is_pid(Srv) ->
@@ -498,6 +510,9 @@ handle_cast({'stop', _Cause}, #state{flows=[Flow|Flows]}=State) ->
 handle_cast('hard_stop', State) ->
     lager:info("instructed to hard_stop"),
     {'stop', 'normal', State#state{hard_stop = 'true'}};
+handle_cast({'soft_stop', Cause}, State) ->
+    lager:info("instructed to soft_stop with ~s", [Cause]),
+    {'stop', 'normal', State#state{cf_module_pid = undefined, cause = Cause}};
 handle_cast('transfer', State) ->
     {'stop', {'shutdown', 'transfer'}, State};
 handle_cast('control_usurped', State) ->
@@ -1090,6 +1105,7 @@ send_cfwd_response(Call, Cause, Response) ->
     CallId = kapps_call:call_id_direct(Call),
     Queue = kapps_call:control_queue(Call),
     Code = kz_json:get_value(<<"Code">>, Response),
+    lager:info("sending cfwd response ~p", [Cause]),
     case kz_call_response:send(CallId, Queue, Code, Cause) of
         {'error', 'no_response'} ->
             hangup_call(Call, Cause);
