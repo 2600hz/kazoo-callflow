@@ -244,7 +244,7 @@ handle(Data, Call0) ->
 
     case kz_json:get_ne_binary_value(<<"action">>, Data, <<"compose">>) of
         <<"compose">> ->
-            kapps_call_command:answer(Call),
+            kapps_call_command:b_answer(Call),
             lager:debug("answered the call and composing the voicemail"),
             case compose_voicemail(Mailbox, Call) of
                 'ok' ->
@@ -258,7 +258,7 @@ handle(Data, Call0) ->
                     cf_exe:stop(Call)
             end;
         <<"check">> ->
-            kapps_call_command:answer(Call),
+            kapps_call_command:b_answer(Call),
             case check_mailbox(Mailbox, Call) of
                 'ok' -> cf_exe:continue(Call);
                 {'error', 'channel_hungup'} -> cf_exe:stop(Call)
@@ -287,7 +287,8 @@ check_mailbox(#mailbox{owner_id=OwnerId}=Box, Call, Loop) ->
 
 -spec check_mailbox(mailbox(), boolean(), kapps_call:call(), non_neg_integer()) ->
           'ok' | {'error', 'channel_hungup'}.
-check_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}, _, Call, Loop) when Loop > MaxLoginAttempts ->
+check_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}, _IsOwner, Call, Loop)
+  when Loop > MaxLoginAttempts ->
     %% if we have exceeded the maximum loop attempts then terminate
     %% this call
     lager:info("maximum number of invalid attempts to check mailbox"),
@@ -295,7 +296,11 @@ check_mailbox(#mailbox{max_login_attempts=MaxLoginAttempts}, _, Call, Loop) when
     'ok';
 check_mailbox(#mailbox{exists='false'
                       ,max_login_attempts=MaxLoginAttempts
-                      }=Box, _ , Call, Loop) ->
+                      }=Box
+             ,_IsOwner
+             ,Call
+             ,Loop
+             ) ->
     %% if the callflow did not define the mailbox to check then
     %% request the mailbox ID from the user
     case find_mailbox(Box, Call, ?DEFAULT_FIND_BOX_PROMPT, Loop) of
@@ -305,20 +310,26 @@ check_mailbox(#mailbox{exists='false'
             %% prompts in above function clause
             check_mailbox(Box, Call, MaxLoginAttempts + 1)
     end;
-check_mailbox(#mailbox{is_setup='false'}=Box, 'true', Call, _) ->
+check_mailbox(#mailbox{is_setup='false'}=Box, 'true', Call, _Loop) ->
     %% If this is the owner of the mailbox calling in and it is not
     %% setup then jump right to the setup wizard
     lager:info("caller is the owner of this mailbox, and it has not been setup yet"),
     main_menu(Box, Call);
-check_mailbox(#mailbox{announcement_only='true', require_pin='false'}=Box, 'true', Call, _) ->
+check_mailbox(#mailbox{announcement_only='true'
+                      ,require_pin='false'
+                      }=Box
+             ,'true'
+             ,Call
+             ,_Loop
+             ) ->
     lager:info("caller is owner of announcement only mailbox, and requires no pin"),
     check_mailbox_menu(Box, Call);
-check_mailbox(#mailbox{require_pin='false'}=Box, 'true', Call, _) ->
+check_mailbox(#mailbox{require_pin='false'}=Box, 'true', Call, _Loop) ->
     %% If this is the owner of the mailbox calling in and it doesn't
     %% require a pin then jump right to the main menu
     lager:info("caller is the owner of this mailbox, and requires no pin"),
     check_mailbox_menu(Box, Call);
-check_mailbox(#mailbox{pin = <<>>}, _, Call, _) ->
+check_mailbox(#mailbox{pin = <<>>}, _IsOwner, Call, _Loop) ->
     %% If the caller is not the owner or the owner with require pin
     %% set but the voicemail box has no pin set then terminate this
     %% call.
@@ -327,7 +338,11 @@ check_mailbox(#mailbox{pin = <<>>}, _, Call, _) ->
     'ok';
 check_mailbox(#mailbox{pin=Pin
                       ,interdigit_timeout=Interdigit
-                      }=Box, IsOwner, Call, Loop) ->
+                      }=Box
+             ,IsOwner
+             ,Call
+             ,Loop
+             ) ->
     lager:info("requesting pin number to check mailbox"),
 
     NoopId = kapps_call_command:prompt(<<"vm-enter_pass">>, Call),
@@ -350,12 +365,16 @@ check_mailbox(#mailbox{pin=Pin
             'ok'
     end.
 
--spec check_mailbox_menu(mailbox(), kapps_call:call()) -> 'ok' | {'error', 'channel_hungup'}.
+-spec check_mailbox_menu(mailbox(), kapps_call:call()) ->
+          'ok' | {'error', 'channel_hungup'}.
 check_mailbox_menu(#mailbox{announcement_only='true'
                            ,not_configurable='false'
-                           }=Box, Call) ->
+                           }=Box
+                  ,Call
+                  ) ->
     config_menu(Box, Call);
-check_mailbox_menu(Box, Call) -> main_menu(Box, Call).
+check_mailbox_menu(Box, Call) ->
+    main_menu(Box, Call).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -644,16 +663,17 @@ play_instructions(#mailbox{skip_instructions='false'}, Call) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec record_voicemail(kz_term:ne_binary(), mailbox(), kapps_call:call()) -> 'ok'.
-record_voicemail(AttachmentName, #mailbox{max_message_length=MaxMessageLength
-                                         ,media_extension=Ext
-                                         }=Box, Call) ->
+record_voicemail(AttachmentName
+                ,#mailbox{max_message_length=MaxMessageLength}=Box
+                ,Call
+                ) ->
     Tone = kz_json:from_list([{<<"Frequencies">>, [<<"440">>]}
                              ,{<<"Duration-ON">>, <<"500">>}
                              ,{<<"Duration-OFF">>, <<"100">>}
                              ]),
     kapps_call_command:tones([Tone], Call),
     lager:info("composing new voicemail to ~s", [AttachmentName]),
-    Routines = [{fun kapps_call:set_message_left/2, 'true'}],
+
     case kapps_call_command:b_record(AttachmentName
                                     ,?ANY_DIGIT
                                     ,kz_term:to_binary(MaxMessageLength)
@@ -663,29 +683,38 @@ record_voicemail(AttachmentName, #mailbox{max_message_length=MaxMessageLength
                                     )
     of
         {'ok', Msg} ->
-            Length = kz_json:get_integer_value(<<"Length">>, Msg, 0),
-            case kz_call_event:channel_answer_state(Msg) =:= <<"answered">>
-                andalso review_recording(AttachmentName, 'true', Box, Call)
-            of
-                'false' ->
-                    _ = cf_exe:update_call(Call, Routines),
-                    new_message(AttachmentName, Length, Box, Call);
-                {'ok', 'record'} ->
-                    record_voicemail(tmp_file(Ext), Box, Call);
-                {'ok', _Selection} ->
-                    _ = cf_exe:update_call(Call, Routines),
-                    cf_util:start_task(fun new_message/4, [AttachmentName, Length, Box], Call),
-                    _ = kapps_call_command:prompt(?PROMPT_SAVED, Call),
-                    _ = kapps_call_command:prompt(<<"vm-thank_you">>, Call),
-                    'ok';
-                {'branch', Flow} ->
-                    _ = cf_exe:update_call(Call, Routines),
-                    _ = new_message(AttachmentName, Length, Box, Call),
-                    _ = kapps_call_command:prompt(?PROMPT_SAVED, Call),
-                    {'branch', Flow}
-            end;
+            handle_record_result(AttachmentName, Box, Call, Msg);
         {'error', _R} ->
             lager:info("error while attempting to record a new message: ~p", [_R])
+    end.
+
+handle_record_result(AttachmentName
+                    ,#mailbox{media_extension=Ext}=Box
+                    ,Call
+                    ,Msg
+                    ) ->
+    Routines = [{fun kapps_call:set_message_left/2, 'true'}],
+    Length = kz_json:get_integer_value(<<"Length">>, Msg, 0),
+
+    case kz_call_event:channel_answer_state(Msg) =:= <<"answered">>
+        andalso review_recording(AttachmentName, 'true', Box, Call)
+    of
+        'false' ->
+            _ = cf_exe:update_call(Call, Routines),
+            new_message(AttachmentName, Length, Box, Call);
+        {'ok', 'record'} ->
+            record_voicemail(tmp_file(Ext), Box, Call);
+        {'ok', _Selection} ->
+            _ = cf_exe:update_call(Call, Routines),
+            cf_util:start_task(fun new_message/4, [AttachmentName, Length, Box], Call),
+            _ = kapps_call_command:prompt(?PROMPT_SAVED, Call),
+            _ = kapps_call_command:prompt(<<"vm-thank_you">>, Call),
+            'ok';
+        {'branch', Flow} ->
+            _ = cf_exe:update_call(Call, Routines),
+            _ = new_message(AttachmentName, Length, Box, Call),
+            _ = kapps_call_command:prompt(?PROMPT_SAVED, Call),
+            {'branch', Flow}
     end.
 
 %%------------------------------------------------------------------------------
