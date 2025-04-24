@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Peter Defebvre
 %%%
@@ -59,4 +59,5 @@ set_hook(Data, CallJObj) ->
       ,{<<"retries">>, kz_json:get_integer_value(<<"retries">>, Data)}
       ,{<<"pvt_account_id">>, kz_json:get_ne_binary_value(<<"account_id">>, CallJObj)}
       ,{<<"custom_data">>, kz_json:get_json_value(<<"custom_data">>, Data)}
+      ,{<<"custom_request_headers">>, kz_json:get_json_value(<<"custom_request_headers">>, Data)}
       ]).
