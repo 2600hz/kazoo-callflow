@@ -35,6 +35,21 @@
 %%------------------------------------------------------------------------------
 -spec handle(kz_json:object(), kapps_call:call()) -> any().
 handle(Data, Call) ->
+    case kzd_pivot:id(Data) of
+        'undefined' ->
+            handle_pivot(Data, Call);
+        PivotId ->
+            AccountId = kapps_call:account_id(Call),
+            case get_pivot_doc(PivotId, AccountId) of
+                {'ok', JObj} ->
+                    handle_pivot(JObj, Call);
+                {'error', 'not_found'} ->
+                    cf_exe:continue(Call)
+            end
+    end.
+
+-spec handle_pivot(kz_json:object(), kapps_call:call()) -> any().
+handle_pivot(Data, Call) ->
     Serverless = kz_json:get_json_value(<<"serverless">>, Data),
     Prop = props:filter_empty(
              [{<<"Call">>, kapps_call:to_json(Call)}
@@ -87,4 +102,14 @@ wait_for_pivot(Data, Call) ->
         {'error', 'timeout'} ->
             lager:error("timeout waiting for pivot response, continuing"),
             cf_exe:continue(Call)
+    end.
+
+-spec get_pivot_doc(kz_term:ne_binary(), kz_term:ne_binary()) -> kz_json:object().
+get_pivot_doc(PivotId, AccountId) ->
+    AccountDb = kzs_util:format_account_db(AccountId),
+    case kz_datamgr:open_cache_doc(AccountDb, PivotId) of
+        {'ok', Doc} -> {'ok', Doc};
+        {'error', _R} ->
+            lager:debug("unable to open pivot doc ~s in ~s: ~p", [PivotId, AccountDb, _R]),
+            {'error', 'not_found'}
     end.
