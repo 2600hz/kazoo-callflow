@@ -30,7 +30,7 @@ handle(Data, Call) ->
 -spec handle_webhook(kz_json:object(), kapps_call:call()) -> 'ok' | {'error', any()}.
 handle_webhook(Data, Call) ->
     CallJObj = format_call_data(Call),
-    Hook = set_hook(Data, CallJObj),
+    Hook = set_hook(Data, Call),
     Props = [{<<"Hook">>, Hook}
             ,{<<"Timestamp">>, kz_time:now_s()}
             ,{<<"Data">>, CallJObj}
@@ -48,16 +48,22 @@ format_call_data(Call) ->
                  ],
     kz_json:normalize_jobj(JObj, RemoveKeys, []).
 
--spec set_hook(kz_json:object(), kz_json:object()) -> kz_json:object().
-set_hook(Data, CallJObj) ->
+-spec set_hook(kz_json:object(), kapps_call:call()) -> kz_json:object().
+set_hook(Data, Call) ->
     Now = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
-    kz_json:from_list(
-      [{<<"_id">>, kz_term:to_binary(Now)}
-      ,{<<"uri">>, kz_json:get_ne_binary_value(<<"uri">>, Data)}
-      ,{<<"hook">>, <<"notifications">>}
-      ,{<<"http_verb">>, kz_json:get_ne_binary_value(<<"http_verb">>, Data)}
-      ,{<<"retries">>, kz_json:get_integer_value(<<"retries">>, Data)}
-      ,{<<"pvt_account_id">>, kz_json:get_ne_binary_value(<<"account_id">>, CallJObj)}
-      ,{<<"custom_data">>, kz_json:get_json_value(<<"custom_data">>, Data)}
-      ,{<<"custom_request_headers">>, kz_json:get_json_value(<<"custom_request_headers">>, Data)}
-      ]).
+    {'ok', Schema} = kz_json_schema:load(<<"webhooks">>),
+    PropertyKeys = kz_json:get_keys(<<"properties">>, Schema),
+
+    DefaultWebhook = kz_doc:setters(kzd_webhooks:new()
+                                   ,[{fun kz_doc:set_id/2, kz_term:to_binary(Now)}
+                                    ,{fun kz_doc:set_account_id/2, kapps_call:account_id(Call)}
+                                    ,{fun kzd_webhooks:set_hook/2, <<"notifications">>}
+                                    ]),
+    {_, Webhook} = lists:foldl(fun add_if_set/2, {Data, DefaultWebhook}, PropertyKeys),
+    Webhook.
+
+add_if_set(Key, {Data, Webhook}) ->
+    case kz_json:get_value(Key, Data) of
+        'undefined' -> {Data, Webhook};
+        Value -> {Data, kz_json:set_value(Key, Value, Webhook)}
+    end.
