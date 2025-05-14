@@ -822,7 +822,12 @@ do_launch_cf_module(#state{call=Call
 
 -spec find_cf_module(kz_json:object()) -> 'undefined' | 'skip' | {'local' | 'remote', atom()}.
 find_cf_module(Flow) ->
-    Module = kz_json:get_ne_binary_value(<<"module">>, Flow),
+    find_cf_module(Flow, kz_json:get_ne_binary_value(<<"module">>, Flow)).
+
+find_cf_module(Flow, 'undefined') ->
+    lager:warning("no module found in flow: ~p", [Flow]),
+    'undefined';
+find_cf_module(Flow, <<Module/binary>>) ->
     ModuleBin = <<"cf_", Module/binary>>,
     Data = kz_json:get_json_value(<<"data">>, Flow, kz_json:new()),
     CFModule = kz_term:to_atom(ModuleBin, 'true'),
