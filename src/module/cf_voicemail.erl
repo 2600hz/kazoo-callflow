@@ -244,7 +244,7 @@ handle(Data, Call0) ->
 
     case kz_json:get_ne_binary_value(<<"action">>, Data, <<"compose">>) of
         <<"compose">> ->
-            kapps_call_command:b_answer(Call),
+            _ = kapps_call_command:b_answer(Call),
             lager:debug("answered the call and composing the voicemail"),
             case compose_voicemail(Mailbox, Call) of
                 'ok' ->
@@ -258,7 +258,7 @@ handle(Data, Call0) ->
                     cf_exe:stop(Call)
             end;
         <<"check">> ->
-            kapps_call_command:b_answer(Call),
+            _ = kapps_call_command:b_answer(Call),
             case check_mailbox(Mailbox, Call) of
                 'ok' -> cf_exe:continue(Call);
                 {'error', 'channel_hungup'} -> cf_exe:stop(Call)
@@ -1068,7 +1068,7 @@ play_message_menu(Prompt
         {'ok', 'keep'} ->
             lager:info("caller chose to save the message"),
             _ = kapps_call_command:flush(Call),
-            {_, SavedMessage} = save_message(CurrentMessage, AccountId, Call),
+            {_, SavedMessage} = save_message(CurrentMessage, BoxId, AccountId, Call),
             play_messages(NextMessages, [SavedMessage|PrevMessages], Count, Box, Call);
         {'ok', 'prev'} ->
             lager:info("caller chose to listen to previous message"),
@@ -1086,7 +1086,7 @@ play_message_menu(Prompt
         {'ok', 'return'} ->
             lager:info("caller chose to return to the main menu"),
             _ = kapps_call_command:flush(Call),
-            _ = save_message(CurrentMessage, AccountId, Call),
+            _ = save_message(CurrentMessage, BoxId, AccountId, Call),
             'complete';
         {'ok', 'replay'} ->
             lager:info("caller chose to replay"),
@@ -1114,7 +1114,7 @@ play_message_menu(Prompt
         {'error', _} ->
             lager:info("error during message playback"),
             _ = kapps_call_command:flush(Call),
-            _ = save_message(CurrentMessage, AccountId, Call),
+            _ = save_message(CurrentMessage, BoxId, AccountId, Call),
             'ok'
     end.
 
@@ -1248,13 +1248,17 @@ play_prev_message(Messages, [H|T], Count, Box, Call) ->
 %%------------------------------------------------------------------------------
 -spec forward_message(kz_json:objects(), kz_json:objects(), non_neg_integer(), mailbox(), kapps_call:call()) ->
           'ok' | 'complete'.
-forward_message([CurrentMessage|NextMessages]=Messages, PrevMessages, Count, Box, Call) ->
+forward_message([CurrentMessage|NextMessages]=Messages
+               ,PrevMessages
+               ,Count
+               ,#mailbox{mailbox_id=BoxId}=Box
+               ,Call) ->
     AccountId = kapps_call:account_id(Call),
     case maybe_forward_message(CurrentMessage, Box, Call) of
         'prompt' ->
             play_message_menu(message_menu(), Messages, PrevMessages, Count, Box, Call);
         'save' ->
-            {_, SavedMessage} = save_message(CurrentMessage, AccountId, Call),
+            {_, SavedMessage} = save_message(CurrentMessage, BoxId, AccountId, Call),
             play_messages(NextMessages, [SavedMessage|PrevMessages], Count, Box, Call)
     end.
 
@@ -1428,10 +1432,19 @@ forward_message_task(AttachmentName, Length, Message, SrcBoxId, #mailbox{mailbox
 %% @doc Handles a user request to save a message.
 %% @end
 %%------------------------------------------------------------------------------
--spec save_message(kz_json:object(), kz_term:api_binary(), kapps_call:call()) -> kvm_message:db_ret().
-save_message(Message, AccountId, Call) ->
-    _ = kapps_call_command:b_prompt(?PROMPT_SAVED, Call),
-    kvm_message:set_folder(?VM_FOLDER_SAVED, Message, AccountId).
+-spec save_message(kz_json:object(), kz_term:ne_binary(), kz_term:api_binary(), kapps_call:call()) -> kvm_message:db_ret().
+save_message(Message, BoxId, AccountId, Call) ->
+    case kz_json:get_value(<<"folder">>, Message) of
+        ?VM_FOLDER_SAVED ->
+            lager:info("message is all ready in ~p folder", [?VM_FOLDER_SAVED]),
+            'ok';
+        _ ->
+            _ = kapps_call_command:b_prompt(?PROMPT_SAVED, Call),
+            MessageId = kz_json:get_ne_binary_value(<<"media_id">>, Message),
+            JObj = hd(kz_json:get_list_value(<<"succeeded">>, kvm_messages:fetch(AccountId, [MessageId], BoxId))),
+            kvm_util:publish_voicemail_moved(BoxId, JObj, 'dtmf', ?VM_FOLDER_SAVED),
+            kvm_message:set_folder(?VM_FOLDER_SAVED, Message, AccountId)
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc Handles a user request to delete a message.
