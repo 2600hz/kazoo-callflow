@@ -241,30 +241,33 @@ direct_park(SlotNumber, Slot, ParkedCalls, Data, Call) ->
           {'error', 'slot_empty' | 'timeout' | 'failed' | 'attended'}.
 retrieve(SlotNumber, Call) ->
     SlotReturn = get_slot(SlotNumber, kapps_call:account_db(Call)),
-    retrieve(SlotNumber, SlotReturn, Call).
+    retrieve(SlotNumber, SlotReturn, 1, Call).
 
--spec retrieve(kz_term:ne_binary(), {'ok', kz_json:object()} | kz_datamgr:data_error(), kapps_call:call()) ->
+-spec retrieve(kz_term:ne_binary(), {'ok', kz_json:object()} | kz_datamgr:data_error(), 1..3, kapps_call:call()) ->
           {'ok', 'retrieved'} |
           {'error', 'slot_empty' | 'timeout' | 'failed' | 'attended'}.
-retrieve(SlotNumber, {'error', 'not_found'}, _Call) ->
+retrieve(SlotNumber, {'error', 'not_found'}, _Try, _Call) ->
     lager:info("the parking slot ~s is empty, unable to retrieve caller", [SlotNumber]),
     {'error', 'slot_empty'};
-retrieve(SlotNumber, {'error', _E}, _Call) ->
+retrieve(SlotNumber, {'error', _E}, _Try, _Call) ->
     lager:info("getting the parking slot ~s errored, unable to retrieve caller: ~p", [SlotNumber, _E]),
     {'error', 'slot_empty'};
-retrieve(SlotNumber, {'ok', Slot}, Call) ->
-    maybe_attempt_retrieve(SlotNumber, Slot, Call).
+retrieve(SlotNumber, {'ok', Slot}, 3, Call) ->
+    retrieve_after_retries(SlotNumber, Slot, Call);
+retrieve(SlotNumber, {'ok', Slot}, Try, Call) ->
+    maybe_attempt_retrieve(SlotNumber, Slot, Try, Call).
 
-maybe_attempt_retrieve(SlotNumber, Slot, Call) ->
-    maybe_attempt_retrieve(SlotNumber, Slot, Call, maybe_retrieve_slot(Slot)).
+maybe_attempt_retrieve(SlotNumber, Slot, Try, Call) ->
+    maybe_attempt_retrieve(SlotNumber, Slot, Try, Call, maybe_retrieve_slot(Slot)).
 
-maybe_attempt_retrieve(_SlotNumber, _Slot, _Call, {'error', _}=E) -> E;
-maybe_attempt_retrieve(SlotNumber, _Slot, _Call, {'attended', AttendedCallId}) ->
-    lager:info("the parking slot ~s currently has a pending attended parked call ~s, play occupied and exit"
-              ,[SlotNumber, AttendedCallId]
+maybe_attempt_retrieve(_SlotNumber, _Slot, _Try, _Call, {'error', _}=E) -> E;
+maybe_attempt_retrieve(SlotNumber, _Slot, Try, Call, {'retry', ParkedCallId}) ->
+    lager:info("the parking slot ~s currently has a pending attended parked call ~s, retrying in 1 sec"
+              ,[SlotNumber, ParkedCallId]
               ),
-    {'error', 'attended'};
-maybe_attempt_retrieve(SlotNumber, _Slot, Call, {'ok', ParkedCallId}) ->
+    timer:sleep(?MILLISECONDS_IN_SECOND),
+    retrieve(SlotNumber, get_slot(SlotNumber, kapps_call:account_db(Call)), Try + 1, Call);
+maybe_attempt_retrieve(SlotNumber, _Slot, _Try, Call, {'ok', ParkedCallId}) ->
     lager:info("the parking slot ~s currently has a parked call ~s, attempting to retrieve caller"
               ,[SlotNumber, ParkedCallId]
               ),
@@ -279,11 +282,30 @@ maybe_attempt_retrieve(SlotNumber, _Slot, Call, {'ok', ParkedCallId}) ->
             E
     end.
 
--spec maybe_retrieve_slot(kz_json:object()) -> {'attended' | 'ok', kz_term:ne_binary()} | {'error', 'slot_empty'}.
+retrieve_after_retries(SlotNumber, Slot, Call) ->
+    retrieve_after_retries(SlotNumber, Slot, Call, kz_json:is_true(<<"Attended">>, Slot)).
+
+retrieve_after_retries(SlotNumber, Slot, _Call, 'true') ->
+    AttendedCallId = kz_json:get_ne_binary_value(<<"Call-ID">>, Slot),
+    lager:info("the parking slot ~s currently has a pending attended parked call ~s after 3 tries, play occupied and exit"
+              ,[SlotNumber, AttendedCallId]
+              ),
+    {'error', 'attended'};
+retrieve_after_retries(SlotNumber, Slot, Call, 'false') ->
+    ParkedCallId = kz_json:get_ne_binary_value(<<"Call-ID">>, Slot),
+    lager:info("the parking slot ~s currently has a parked call ~s after 3 tries, attempting to retrieve caller"
+              ,[SlotNumber, ParkedCallId]
+              ),
+    case retrieve_slot(ParkedCallId, Call) of
+        'ok' -> {'ok', 'retrieved'};
+        Error -> Error
+    end.
+
+-spec maybe_retrieve_slot(kz_json:object()) -> {'retry' | 'ok', kz_term:ne_binary()} | {'error', 'slot_empty'}.
 maybe_retrieve_slot(Slot) ->
     ParkedCallId = kz_json:get_ne_binary_value(<<"Call-ID">>, Slot),
     case kz_json:is_true(<<"Attended">>, Slot) of
-        'true' -> {'attended', ParkedCallId};
+        'true' -> {'retry', ParkedCallId};
         'false' when ParkedCallId =/= 'undefined' -> {'ok', ParkedCallId};
         'false' -> {'error', 'slot_empty'}
     end.
