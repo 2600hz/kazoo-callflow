@@ -114,6 +114,8 @@ handle_nomatch_with_empty_referred_to(Data, Call, PresenceType, ParkedCalls, Slo
         <<"auto">> ->
             lager:info("action is to automatically determine if we should retrieve or park"),
             case retrieve(SlotNumber, Call) of
+                {'error', 'attended'} ->
+                    error_occupied_slot(Call);
                 {'error', _} ->
                     Slot = create_slot(cf_exe:callid(Call), PresenceType, SlotNumber, Data, 'true', Call),
                     park_call(SlotNumber, Slot, ParkedCalls, 'undefined', Data, Call);
@@ -236,14 +238,14 @@ direct_park(SlotNumber, Slot, ParkedCalls, Data, Call) ->
 %%------------------------------------------------------------------------------
 -spec retrieve(kz_term:ne_binary(), kapps_call:call()) ->
           {'ok', 'retrieved'} |
-          {'error', 'slot_empty' | 'timeout' | 'failed'}.
+          {'error', 'slot_empty' | 'timeout' | 'failed' | 'attended'}.
 retrieve(SlotNumber, Call) ->
     SlotReturn = get_slot(SlotNumber, kapps_call:account_db(Call)),
     retrieve(SlotNumber, SlotReturn, 1, Call).
 
 -spec retrieve(kz_term:ne_binary(), {'ok', kz_json:object()} | kz_datamgr:data_error(), 1..3, kapps_call:call()) ->
           {'ok', 'retrieved'} |
-          {'error', 'slot_empty' | 'timeout' | 'failed'}.
+          {'error', 'slot_empty' | 'timeout' | 'failed' | 'attended'}.
 retrieve(SlotNumber, {'error', 'not_found'}, _Try, _Call) ->
     lager:info("the parking slot ~s is empty, unable to retrieve caller", [SlotNumber]),
     {'error', 'slot_empty'};
@@ -281,6 +283,15 @@ maybe_attempt_retrieve(SlotNumber, _Slot, _Try, Call, {'ok', ParkedCallId}) ->
     end.
 
 retrieve_after_retries(SlotNumber, Slot, Call) ->
+    retrieve_after_retries(SlotNumber, Slot, Call, kz_json:is_true(<<"Attended">>, Slot)).
+
+retrieve_after_retries(SlotNumber, Slot, _Call, 'true') ->
+    AttendedCallId = kz_json:get_ne_binary_value(<<"Call-ID">>, Slot),
+    lager:info("the parking slot ~s currently has a pending attended parked call ~s after 3 tries, play occupied and exit"
+              ,[SlotNumber, AttendedCallId]
+              ),
+    {'error', 'attended'};
+retrieve_after_retries(SlotNumber, Slot, Call, 'false') ->
     ParkedCallId = kz_json:get_ne_binary_value(<<"Call-ID">>, Slot),
     lager:info("the parking slot ~s currently has a parked call ~s after 3 tries, attempting to retrieve caller"
               ,[SlotNumber, ParkedCallId]
