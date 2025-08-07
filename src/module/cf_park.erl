@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2024, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc
 %%% @author Karl Anderson
 %%% @author James Aimonetti
@@ -367,7 +367,7 @@ park_call(SlotNumber, Slot, ParkedCalls, ReferredTo, Data, Call) ->
             _ = wait_for_hangup(Call),
             _ = timer:apply_after(?PARK_DELAY_CHECK_TIME, ?MODULE, 'maybe_cleanup_slot', [SlotNumber, Call, cf_exe:callid(Call)]),
             cf_exe:transfer(Call);
-        %% blind transfer and but the provided slot number is occupied
+        %% blind transfer but the provided slot number is occupied
         {_, {'error', 'occupied'}} ->
             lager:info("blind transfer to a occupied slot, call the parker back.."),
             case ringback_parker(kz_json:get_ne_binary_value(<<"Ringback-ID">>, Slot), SlotNumber, Slot, Data, Call) of
@@ -807,17 +807,85 @@ wait_for_pickup(SlotNumber, Slot, Data, Call) ->
             _ = publish_abandoned(Call, SlotNumber),
             _ = cleanup_slot(SlotNumber, cf_exe:callid(Call), kapps_call:account_db(Call)),
             cf_exe:stop(Call);
-        {'ok', _JObj} ->
-            lager:info("parked caller has been picked up"),
-            _ = publish_retrieved(Call, SlotNumber),
-            _ = cleanup_slot(SlotNumber, cf_exe:callid(Call), kapps_call:account_db(Call)),
-            cf_exe:transfer(Call);
+        {'ok', JObj} ->
+            case {kz_call_event:event_name(JObj), kz_call_event:application_name(JObj), kz_call_event:channel_state(JObj)} of
+                %% fast pickup scenario
+                {<<"CHANNEL_INTERCEPTED">>, _AppName, _ChannelState} ->
+                    lager:info("parked call intercepted, handling fast pickup"),
+                    handle_fast_pickup(JObj, Call, SlotNumber);
+                %% FS application hold completed due to parked call hangup
+                {<<"CHANNEL_EXECUTE_COMPLETE">>, <<"hold">>, <<"HANGUP">>}->
+                    lager:info("parked caller hangup"),
+                    _ = publish_abandoned(Call, SlotNumber),
+                    _ = cleanup_slot(SlotNumber, cf_exe:callid(Call), kapps_call:account_db(Call)),
+                    cf_exe:stop(Call);
+                %% FS application hold completed, indicating parked call pickup
+                {<<"CHANNEL_EXECUTE_COMPLETE">>, <<"hold">>, _} ->
+                    lager:info("parked caller has been picked up"),
+                    _ = publish_retrieved(Call, SlotNumber),
+                    _ = cleanup_slot(SlotNumber, cf_exe:callid(Call), kapps_call:account_db(Call)),
+                    cf_exe:transfer(Call)
+            end;
         _Else ->
             lager:info("unhandled case waiting for call pickup"),
             _ = publish_abandoned(Call, SlotNumber),
             _ = cleanup_slot(SlotNumber, cf_exe:callid(Call), kapps_call:account_db(Call)),
             cf_exe:stop(Call)
     end.
+
+handle_fast_pickup(JObj, Call, SlotNumber) ->
+    PickerCallID = kz_json:get_ne_value(<<"Intercepted-By">>, JObj),
+    ParkedCallID = cf_exe:callid(Call),
+    AMQPConsumer = kz_amqp_channel:consumer_pid(),
+    AMQPChannel = kz_amqp_channel:consumer_channel(),
+    AccountDb = kapps_call:account_db(Call),
+    kz_process:spawn(fun fast_picker_leg_handler/3, [PickerCallID, AMQPConsumer, AMQPChannel]),
+    %% wait for bridge with picker leg
+    case kapps_call_command:wait_for_channel_bridge() of
+        {'ok', Evt} ->
+            case kz_api:event_type(Evt) of
+                {<<"call_event">>, <<"CHANNEL_BRIDGE">>} ->
+                    lager:info("fast pickup: parked call bridged with picker leg ~s", [PickerCallID]),
+                    _ = publish_retrieved(Call, SlotNumber),
+                    _ = cleanup_slot(SlotNumber, ParkedCallID, AccountDb),
+                    cf_exe:transfer(Call);
+                _ ->
+                    lager:info("fast pickup: parked call: ~s was disconnected", [ParkedCallID]),
+                    _ = publish_abandoned(Call, SlotNumber),
+                    _ = cleanup_slot(SlotNumber, ParkedCallID, AccountDb),
+                    cf_exe:stop(Call)
+            end
+    end.
+
+fast_picker_leg_handler(PickerCallID, AMQPConsumer, AMQPChannel) ->
+    _ = kz_amqp_channel:consumer_channel(AMQPChannel),
+    _ = kz_amqp_channel:consumer_pid(AMQPConsumer),
+    kz_events:bind_call_id(PickerCallID),
+    %% wait for bridge with parked leg
+    case kapps_call_command:wait_for_channel_bridge() of
+        {'ok', Evt} ->
+            case kz_api:event_type(Evt) of
+                {<<"call_event">>, <<"CHANNEL_BRIDGE">>} ->
+                    PickerCall = build_call_from_event(Evt),
+                    lager:debug("fast pickup: processing recording settings for picker call: ~s", [PickerCallID]),
+                    maybe_record_call(PickerCall);
+                _ ->
+                    lager:info("fast pickup: picker call: ~s was disconnected", [PickerCallID])
+            end
+    end.
+
+build_call_from_event(Event) ->
+    CCVs = kz_json:get_value(<<"Custom-Channel-Vars">>, Event),
+    CallCtlQ = kz_json:get_ne_binary_value([<<"Call-Control">>, <<"Queue">>], Event),
+    CallCtlPid = kz_json:get_ne_binary_value([<<"Call-Control">>, <<"PID">>], Event),
+    Routines = [
+                {fun kapps_call:from_json/2, Event}
+               ,{fun kapps_call:set_account_id/2, kz_json:get_binary_value(<<"Account-ID">>, CCVs)}
+               ,{fun kapps_call:set_authorizing_id/2, kz_json:get_binary_value(<<"Authorizing-ID">>, CCVs)}
+               ,{fun kapps_call:set_authorizing_type/2, kz_json:get_binary_value(<<"Authorizing-Type">>, CCVs)}
+               ,{fun kapps_call:set_control_queue/2, kapi:encode_pid(CallCtlQ, kz_term:to_pid(CallCtlPid))}
+               ],
+    kapps_call:exec(Routines, kapps_call:new()).
 
 -spec ringback_timeout(kz_json:object(), kz_term:ne_binary()) -> integer().
 ringback_timeout(Data, SlotNumber) ->
