@@ -72,7 +72,33 @@ Developers can expect that custom channel variables (CCVs) will be an available 
 }
 ```
 
-### Route to the account's local carriers
+### Route call to local carrier resources
+
+
+You may choose to either use the system carrier resources for routing calls out or use your own carrier resources
+in case of Bring Your Own Carrier (BYOC).
+
+If you want to use BYOC in all case it is highly advisable beside settings the correct value for `resources` actions
+you also configure your account configuration via [Configs API](https:/docs.2600hz.com/git/2600hz/kazoo-crossbar/doc/configs.md)
+so all other places that may place an outbound call will also honor these configurations.
+
+- To toggle whether to use the `hunt_account_id`'s (or account's) resources vs the system resources:
+    - Set `use_local_resources` to `true` in data section of `resources` actions.
+    - If not set (e.g. it is undefined) the below default system value will be used
+    - Default system value:
+        - Can be set via `PATCH /v2/accounts/{ACCOUNT_ID}/configs/call_command` and set `should_use_local_resources` to `true`
+        - Default value is `false`, meaning system carriers maybe be use in other places by default.
+- When using local resources, to indicate what account ID to use to lookup resources when making the call:
+    - Set `hunt_account_id`
+    - If not set, the default value from your account configuration (or reseller's) will be used, if still not defined, `resources` action
+    will use the account's ID of the call.
+    - Default system value:
+        - Can be set via `PATCH /v2/accounts/{ACCOUNT_ID}/configs/call_command` and set `offnet_hunt_account_id`.
+        - Default value is undefined
+
+Resources action will use `use_local_resources` or `hunt_account_id` set in data, and only use configurations only if the fields are not set.
+
+#### Use account's local carriers
 
 ```json
 {"module":"resources",
@@ -82,7 +108,9 @@ Developers can expect that custom channel variables (CCVs) will be an available 
 }
 ```
 
-### Route to another account's local carriers
+You may configure this via your account configuration, see above.
+
+#### Use another account's local carriers
 
 ```json
 {"module":"resources",
@@ -94,6 +122,8 @@ Developers can expect that custom channel variables (CCVs) will be an available 
 ```
 
 This is great for resellers; they can set their reseller account id as the `hunt_account_id` in callflows for their child accounts (such as in the `no_match` callflow).
+
+You (or your reseller) may configure this via your account configuration, see above.
 
 ### Dynamic Flags
 

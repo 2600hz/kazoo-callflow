@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2023, 2600Hz
+%%% @copyright (C) 2011-2025, 2600Hz
 %%% @doc Callflow resource.
 %%%
 %%% <h4>Data options:</h4>
@@ -429,8 +429,15 @@ get_hunt_account_id(Data, Call) ->
     case kz_json:is_true(<<"use_local_resources">>, Data, 'true') of
         'false' -> 'undefined';
         'true' ->
-            AccountId = kapps_call:account_id(Call),
+            AccountId = default_hunt_account_id(Call),
             kz_json:get_ne_binary_value(<<"hunt_account_id">>, Data, AccountId)
+    end.
+
+-spec default_hunt_account_id(kapps_call:call()) -> kz_term:api_binary().
+default_hunt_account_id(Call) ->
+    case kapps_call:hunt_account_id(Call) of
+        'undefined' -> kapps_call:account_id(Call);
+        AccountId -> AccountId
     end.
 
 -spec get_to_did(kz_json:object(), kapps_call:call()) -> kz_term:ne_binary().
@@ -461,8 +468,8 @@ get_original_request_user(Call) ->
     RequestUser.
 
 -spec remove_diversions(kz_json:json_kv()) -> boolean().
-remove_diversions({<<"Diversion", _/binary>>, _V}) -> false;
-remove_diversions(_KV) -> true.
+remove_diversions({<<"Diversion", _/binary>>, _V}) -> 'false';
+remove_diversions(_KV) -> 'true'.
 
 -spec endpoint_outbound_sip_headers(kapps_call:call()) -> kz_json:object().
 endpoint_outbound_sip_headers(Call) ->
@@ -476,7 +483,7 @@ endpoint_outbound_sip_headers(Call) ->
 -spec flow_outbound_sip_headers(kz_json:object()) -> kz_json:object().
 flow_outbound_sip_headers(Data) ->
     case kz_json:get_json_value(<<"custom_sip_headers">>, Data) of
-        undefined -> kz_json:new();
+        'undefined' -> kz_json:new();
         CSHs -> CSHs
     end.
 
@@ -520,7 +527,7 @@ get_flags(Data, Call) ->
     Routines = [fun get_flow_flags/3
                ,fun get_flow_dynamic_flags/3
                ],
-    lists:foldl(fun(F, A) -> F(Data, Call, A) end, Flags, Routines).
+    lists:uniq(lists:foldl(fun(F, A) -> F(Data, Call, A) end, Flags, Routines)).
 
 -spec get_flow_flags(kz_json:object(), kapps_call:call(), kz_term:ne_binaries()) ->
           kz_term:ne_binaries().
