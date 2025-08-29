@@ -1122,12 +1122,12 @@ handle_channel_pivoted(Self, PidRef, JObj, Call) ->
         <<FlowBin/binary>> ->
             _ = maybe_stop_action(PidRef),
             lager:debug("pivoting to ~s", [FlowBin]),
-            _ = kapps_call_command:b_flush(Call),
+            {'ok', _} = cf_util:b_flush_control_queue(Call),
             continue_with_flow(kz_json:decode(FlowBin), Self);
         FlowJObj ->
             _ = maybe_stop_action(PidRef),
             lager:debug("pivoting to ~p", [FlowJObj]),
-            _ = kapps_call_command:b_flush(Call),
+            {'ok', _} = cf_util:b_flush_control_queue(Call),
             continue_with_flow(FlowJObj, Self)
     end.
 

@@ -50,7 +50,9 @@
         ,event_listener_name/2
         ]).
 
--export([flush_control_queue/1]).
+-export([flush_control_queue/1
+        ,b_flush_control_queue/1
+        ]).
 
 -export([normalize_capture_group/1, normalize_capture_group/2]).
 
@@ -852,7 +854,7 @@ get_mailbox(AccountDb, VMNumber) ->
             E
     end.
 
--spec flush_control_queue(kapps_call:call()) -> 'ok'.
+-spec flush_control_queue(kapps_call:call()) -> kz_term:ne_binary().
 flush_control_queue(Call) ->
     ControlQueue = kapps_call:control_queue_direct(Call),
     CallId = kapps_call:call_id_direct(Call),
@@ -865,7 +867,14 @@ flush_control_queue(Call) ->
               | kz_api:default_headers(<<"call">>, <<"command">>, ?APP_NAME, ?APP_VERSION)
               ],
     lager:debug("flushing with ~p", [Command]),
-    kz_amqp_worker:cast(Command, fun(C) -> kapi_dialplan:publish_command(ControlQueue, C) end).
+    kz_amqp_worker:cast(Command, fun(C) -> kapi_dialplan:publish_command(ControlQueue, C) end),
+    NoopId.
+
+-spec b_flush_control_queue(kapps_call:call()) ->
+          {'ok', kapps_call:call()} |
+          {'error', 'channel_hungup' | kz_json:object()}.
+b_flush_control_queue(Call) ->
+    wait_for_noop(Call, flush_control_queue(Call)).
 
 %% @equiv normalize_capture_group(CaptureGroup, 'undefined')
 -spec normalize_capture_group(kz_term:api_binary()) -> kz_term:api_ne_binary().
